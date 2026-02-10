@@ -1,0 +1,283 @@
+`include "disciplines.vams"
+`include "constants.vams"
+
+// QPRBS13-CEI (PRBS13Q) pattern generator
+// Polynomial: G(x) = 1 + x + x^2 + x^12 + x^13
+//
+// Figure-16-19 aligned structure:
+//   even chain: S0 -> S2 -> S4 -> S6 -> S8 -> S10 -> S12
+//   odd  chain: S1 -> S3 -> S5 -> S7 -> S9 -> S11
+//
+// Four XOR nodes implemented exactly as the figure connectivity:
+//   x_top_r    = S12 ^ S10            // right-top '+'
+//   x_bot_r    = S12 ^ S11            // right-bottom '+'
+//   x_left_mid = S3  ^ x_bot_r        // left-middle '+'
+//   x_left_top = x_top_r ^ x_left_mid // left-top '+'
+//
+// State injection/update per clock rising edge:
+//   nS0 = x_left_top
+//   nS1 = x_left_mid
+//   nS2=S0, nS4=S2, nS6=S4, nS8=S6, nS10=S8, nS12=S10
+//   nS3=S1, nS5=S3, nS7=S5, nS9=S7, nS11=S9
+//
+// Output taps per figure left-side A/B labels:
+//   raw A(msb)=nS0, raw B(lsb)=nS1 at each UI update.
+
+module qprbs13_cei_gen(
+    input  electrical clk,        // clock input
+    input  electrical rst_n,      // active-low reset
+    output electrical A,          // A (msb)
+    output electrical B,          // B (lsb)
+    output electrical pam4        // optional PAM4 level
+);
+
+    // PAM4 output levels (Volt)
+    parameter real v0 = 0.0;      // level for symbol 00
+    parameter real v1 = 0.25;     // level for symbol 01
+    parameter real v2 = 0.5;      // level for symbol 11
+    parameter real v3 = 0.75;     // level for symbol 10
+
+    // Two-level output amplitude for A/B bit ports (Volt)
+    parameter real vbit_low  = 0.0;
+    parameter real vbit_high = 0.75;
+
+    // Transition smoothing times for analog convergence (second)
+    parameter real tr = 2p;
+    parameter real tf = 2p;
+
+    // Threshold (Volt) for cross() edge detection on clk/rst_n
+    parameter real vth = 0.375;
+
+    // Seed for reset/init state; mapped to 13-bit non-zero state space
+    parameter integer seed = 1;
+
+    // 1: output Gray-coded A/B; 0: output raw binary A/B
+    parameter integer gray_enable = 1;
+
+    // 1: drive PAM4 output; 0: force pam4 to 0V
+    parameter integer pam4_enable = 1;
+
+    // 13 state bits (integer 0/1)
+    integer S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12;
+
+    // Next-state and XOR helper nodes
+    integer nS0, nS1, nS2, nS3, nS4, nS5, nS6, nS7, nS8, nS9, nS10, nS11, nS12;
+    integer x_top_r, x_bot_r, x_left_mid, x_left_top;
+
+    // Output coding registers (integer 0/1 for bits, real for PAM4)
+    integer a_raw, b_raw;         // raw binary output pair
+    integer a_out, b_out;         // effective A/B after gray_enable selection
+    real pam4_target;             // output target voltage for PAM4 pin
+
+    // local helper for seed legalization
+    integer seed13;
+
+    analog begin
+        // Initialization at simulation start
+        @(initial_step) begin
+            seed13 = (seed & 8191);     // keep only [12:0]
+            if (seed13 == 0)
+                seed13 = 1;             // all-zero forbidden for PRBS state
+
+            S0  = (seed13 >> 0)  & 1;
+            S1  = (seed13 >> 1)  & 1;
+            S2  = (seed13 >> 2)  & 1;
+            S3  = (seed13 >> 3)  & 1;
+            S4  = (seed13 >> 4)  & 1;
+            S5  = (seed13 >> 5)  & 1;
+            S6  = (seed13 >> 6)  & 1;
+            S7  = (seed13 >> 7)  & 1;
+            S8  = (seed13 >> 8)  & 1;
+            S9  = (seed13 >> 9)  & 1;
+            S10 = (seed13 >> 10) & 1;
+            S11 = (seed13 >> 11) & 1;
+            S12 = (seed13 >> 12) & 1;
+
+            // Define deterministic startup outputs from current state
+            a_raw = S0;
+            b_raw = S1;
+
+            if (gray_enable != 0) begin
+                // 2-bit binary -> Gray: g1=b1, g0=b1^b0
+                a_out = a_raw;
+                b_out = a_raw ^ b_raw;
+            end else begin
+                a_out = a_raw;
+                b_out = b_raw;
+            end
+
+            if (pam4_enable != 0) begin
+                // Gray-code symbol to PAM4 voltage: 00/01/11/10 -> v0/v1/v2/v3
+                if ((a_out == 0) && (b_out == 0))
+                    pam4_target = v0;
+                else if ((a_out == 0) && (b_out == 1))
+                    pam4_target = v1;
+                else if ((a_out == 1) && (b_out == 1))
+                    pam4_target = v2;
+                else
+                    pam4_target = v3; // (a_out,b_out) == 10
+            end else
+                pam4_target = 0.0;
+        end
+
+        // Asynchronous active-low reset handling
+        @(cross(V(rst_n) - vth, -1)) begin
+            seed13 = (seed & 8191);
+            if (seed13 == 0)
+                seed13 = 1;
+
+            S0  = (seed13 >> 0)  & 1;
+            S1  = (seed13 >> 1)  & 1;
+            S2  = (seed13 >> 2)  & 1;
+            S3  = (seed13 >> 3)  & 1;
+            S4  = (seed13 >> 4)  & 1;
+            S5  = (seed13 >> 5)  & 1;
+            S6  = (seed13 >> 6)  & 1;
+            S7  = (seed13 >> 7)  & 1;
+            S8  = (seed13 >> 8)  & 1;
+            S9  = (seed13 >> 9)  & 1;
+            S10 = (seed13 >> 10) & 1;
+            S11 = (seed13 >> 11) & 1;
+            S12 = (seed13 >> 12) & 1;
+
+            a_raw = S0;
+            b_raw = S1;
+
+            if (gray_enable != 0) begin
+                a_out = a_raw;
+                b_out = a_raw ^ b_raw;
+            end else begin
+                a_out = a_raw;
+                b_out = b_raw;
+            end
+
+            if (pam4_enable != 0) begin
+                if ((a_out == 0) && (b_out == 0))
+                    pam4_target = v0;
+                else if ((a_out == 0) && (b_out == 1))
+                    pam4_target = v1;
+                else if ((a_out == 1) && (b_out == 1))
+                    pam4_target = v2;
+                else
+                    pam4_target = v3;
+            end else
+                pam4_target = 0.0;
+        end
+
+        // Update once per rising clock edge
+        @(cross(V(clk) - vth, +1)) begin
+            if (V(rst_n) < vth) begin
+                // Hold deterministic reset state while reset is active
+                seed13 = (seed & 8191);
+                if (seed13 == 0)
+                    seed13 = 1;
+
+                S0  = (seed13 >> 0)  & 1;
+                S1  = (seed13 >> 1)  & 1;
+                S2  = (seed13 >> 2)  & 1;
+                S3  = (seed13 >> 3)  & 1;
+                S4  = (seed13 >> 4)  & 1;
+                S5  = (seed13 >> 5)  & 1;
+                S6  = (seed13 >> 6)  & 1;
+                S7  = (seed13 >> 7)  & 1;
+                S8  = (seed13 >> 8)  & 1;
+                S9  = (seed13 >> 9)  & 1;
+                S10 = (seed13 >> 10) & 1;
+                S11 = (seed13 >> 11) & 1;
+                S12 = (seed13 >> 12) & 1;
+
+                a_raw = S0;
+                b_raw = S1;
+            end else begin
+                // Figure-16-19 XOR network
+                x_top_r    = S12 ^ S10;
+                x_bot_r    = S12 ^ S11;
+                x_left_mid = S3  ^ x_bot_r;
+                x_left_top = x_top_r ^ x_left_mid;
+
+                // Two-chain shift/inject
+                nS0  = x_left_top;
+                nS1  = x_left_mid;
+                nS2  = S0;
+                nS3  = S1;
+                nS4  = S2;
+                nS5  = S3;
+                nS6  = S4;
+                nS7  = S5;
+                nS8  = S6;
+                nS9  = S7;
+                nS10 = S8;
+                nS11 = S9;
+                nS12 = S10;
+
+                // Sanity guard: prevent illegal lock-up at all-zero state.
+                // Strategy: if next state is all 0, force to legalized seed state.
+                if ((nS0|nS1|nS2|nS3|nS4|nS5|nS6|nS7|nS8|nS9|nS10|nS11|nS12) == 0) begin
+                    seed13 = (seed & 8191);
+                    if (seed13 == 0)
+                        seed13 = 1;
+                    nS0  = (seed13 >> 0)  & 1;
+                    nS1  = (seed13 >> 1)  & 1;
+                    nS2  = (seed13 >> 2)  & 1;
+                    nS3  = (seed13 >> 3)  & 1;
+                    nS4  = (seed13 >> 4)  & 1;
+                    nS5  = (seed13 >> 5)  & 1;
+                    nS6  = (seed13 >> 6)  & 1;
+                    nS7  = (seed13 >> 7)  & 1;
+                    nS8  = (seed13 >> 8)  & 1;
+                    nS9  = (seed13 >> 9)  & 1;
+                    nS10 = (seed13 >> 10) & 1;
+                    nS11 = (seed13 >> 11) & 1;
+                    nS12 = (seed13 >> 12) & 1;
+                end
+
+                // Commit states
+                S0  = nS0;
+                S1  = nS1;
+                S2  = nS2;
+                S3  = nS3;
+                S4  = nS4;
+                S5  = nS5;
+                S6  = nS6;
+                S7  = nS7;
+                S8  = nS8;
+                S9  = nS9;
+                S10 = nS10;
+                S11 = nS11;
+                S12 = nS12;
+
+                // Output bits picked at figure left boundary (new injections)
+                a_raw = nS0;
+                b_raw = nS1;
+            end
+
+            // Gray option for A/B output pair
+            // Rule: Gray(msb,lsb) = (Bin_msb, Bin_msb XOR Bin_lsb)
+            if (gray_enable != 0) begin
+                a_out = a_raw;
+                b_out = a_raw ^ b_raw;
+            end else begin
+                a_out = a_raw;
+                b_out = b_raw;
+            end
+
+            // PAM4 mapping (on effective pair): 00/01/11/10 -> v0/v1/v2/v3
+            if (pam4_enable != 0) begin
+                if ((a_out == 0) && (b_out == 0))
+                    pam4_target = v0;
+                else if ((a_out == 0) && (b_out == 1))
+                    pam4_target = v1;
+                else if ((a_out == 1) && (b_out == 1))
+                    pam4_target = v2;
+                else
+                    pam4_target = v3;
+            end else
+                pam4_target = 0.0;
+        end
+
+        // Smoothed electrical outputs
+        V(A)    <+ transition((a_out != 0) ? vbit_high : vbit_low, 0.0, tr, tf);
+        V(B)    <+ transition((b_out != 0) ? vbit_high : vbit_low, 0.0, tr, tf);
+        V(pam4) <+ transition(pam4_target, 0.0, tr, tf);
+    end
+endmodule
