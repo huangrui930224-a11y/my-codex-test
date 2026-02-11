@@ -192,8 +192,8 @@ module qprbs13_cei_gen(
                 // Figure-16-19 XOR network
                 x_top_r    = S12 ^ S10;
                 x_bot_r    = S12 ^ S11;
-                x_left_mid = S3  ^ x_bot_r;
-                x_left_top = x_top_r ^ x_left_mid;
+                x_left_mid = S0 ^ S1 ^ x_bot_r;
+                x_left_top = x_top_r ^ S1;
 
                 // Two-chain shift/inject
                 nS0  = x_left_top;
