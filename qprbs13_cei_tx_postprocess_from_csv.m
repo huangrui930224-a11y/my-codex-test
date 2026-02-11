@@ -1,31 +1,39 @@
 function out = qprbs13_cei_tx_postprocess_from_csv(wave_csv, sym_src, cfg)
 %QPRBS13_CEI_TX_POSTPROCESS_FROM_CSV Read CSV and run full auto processing.
+%   out = qprbs13_cei_tx_postprocess_from_csv(wave_csv)
+%   out = qprbs13_cei_tx_postprocess_from_csv(wave_csv, sym_src)
 %   out = qprbs13_cei_tx_postprocess_from_csv(wave_csv, sym_src, cfg)
 %
 % Inputs
 %   wave_csv : path to waveform CSV, containing at least two numeric columns:
-%              time(s) and v_tx(V).
-%              Supported column names (case-insensitive):
-%              - time: t, time
-%              - voltage: v_tx, v, voltage
-%              If names are unavailable, the first two numeric columns are used.
-%   sym_src  : one of
-%              (a) numeric vector of one-cycle PAM4 symbols (length 8191), or
-%              (b) path to CSV file containing one symbol column
+%              time(s) and voltage(V).
+%   sym_src  : optional symbol source:
+%              (a) numeric vector (8191 symbols), or
+%              (b) symbol CSV path, or
+%              (c) [] / omitted -> auto infer symbols from waveform
 %   cfg      : optional struct passed to qprbs13_cei_tx_postprocess
 %              extra optional fields:
 %                .save_mat      (default false)
 %                .output_mat    (default '<wave_csv>_postprocess.mat')
 %
-% Output
-%   out      : same struct returned by qprbs13_cei_tx_postprocess
+% Notes
+%   This entrypoint supports cropped waveform captures (t not starting at 0)
+%   as long as at least 20*N UI samples are present.
 
+    if nargin < 2
+        sym_src = [];
+    end
     if nargin < 3
         cfg = struct();
     end
 
     [t, v_tx] = read_waveform_csv(wave_csv);
-    sym_cycle = read_symbol_source(sym_src);
+
+    if isempty(sym_src)
+        sym_cycle = infer_symbol_cycle_from_waveform(t, v_tx, cfg);
+    else
+        sym_cycle = read_symbol_source(sym_src);
+    end
 
     out = qprbs13_cei_tx_postprocess(t, v_tx, sym_cycle, cfg);
 
@@ -70,9 +78,57 @@ function [t, v_tx] = read_waveform_csv(csv_path)
 
     t = T{:, idx_t};
     v_tx = T{:, idx_v};
-
     t = t(:);
     v_tx = v_tx(:);
+end
+
+function sym_cycle = infer_symbol_cycle_from_waveform(t, v_tx, cfg)
+    M = get_cfg(cfg, 'M', 64);
+    [~, ~, info] = resample_qprbs13_cei_step1(t, v_tx, M);
+
+    N = info.N;
+    y_center = info.y_matrix_full(info.m_center, :).';   % 20*N x 1
+
+    % Initial 4-level partition via quartiles (robust, toolbox-free)
+    q = quantile(y_center, [0.25, 0.50, 0.75]);
+    labels = ones(size(y_center));
+    labels(y_center > q(1)) = 2;
+    labels(y_center > q(2)) = 3;
+    labels(y_center > q(3)) = 4;
+
+    % Refine class centroids and relabel by nearest centroid
+    cent = zeros(4,1);
+    for i = 1:4
+        cent(i) = mean(y_center(labels == i));
+    end
+    labels2 = zeros(size(labels));
+    for n = 1:numel(y_center)
+        [~, idx] = min(abs(y_center(n) - cent));
+        labels2(n) = idx;
+    end
+
+    % Map centroid order to PAM4 levels
+    [~, ord] = sort(cent, 'ascend');
+    map = zeros(4,1);
+    map(ord(1)) = -1;
+    map(ord(2)) = -1/3;
+    map(ord(3)) =  1/3;
+    map(ord(4)) =  1;
+    sym_est = map(labels2);
+
+    % Convert 20*N estimates into one cycle by per-position majority voting
+    sym_mat = reshape(sym_est, N, 20);
+    sym_cycle = zeros(N,1);
+    levels = [-1, -1/3, 1/3, 1];
+    for k = 1:N
+        row = sym_mat(k,:);
+        cnt = zeros(1,4);
+        for j = 1:4
+            cnt(j) = sum(abs(row - levels(j)) < 1e-12);
+        end
+        [~, ix] = max(cnt);
+        sym_cycle(k) = levels(ix);
+    end
 end
 
 function sym_cycle = read_symbol_source(sym_src)
@@ -86,7 +142,6 @@ function sym_cycle = read_symbol_source(sym_src)
         if width(Ts) < 1
             error('Symbol CSV has no columns.');
         end
-        % use first numeric column, or first column if already numeric table
         idx = [];
         for k = 1:width(Ts)
             if isnumeric(Ts{:, k})
@@ -106,7 +161,6 @@ function sym_cycle = read_symbol_source(sym_src)
     if numel(sym_cycle) ~= 8191
         error('Symbol sequence length must be 8191 for one QPRBS13-CEI cycle.');
     end
-
     valid = ismember(sym_cycle, [-1, -1/3, 1/3, 1]);
     if ~all(valid)
         error('Symbols must be in {-1, -1/3, +1/3, +1}.');

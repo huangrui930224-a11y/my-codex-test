@@ -48,10 +48,16 @@ function [y, Y, info] = resample_qprbs13_cei_step1(t, v_tx, M)
         error('M must be a positive integer.');
     end
 
-    % ---- Step 1: strict time window ----
-    % Start from the first UI of cycle #2 and end at the last UI of cycle #21.
-    % Cycle #1 starts at t(1), each cycle has N UIs.
-    t_start = t(1) + N * UI;
+    % ---- Step 1: choose a valid 20*N-UI window from captured waveform ----
+    % The waveform may be cropped and t(1) may not be 0 or a cycle boundary.
+    total_ui = floor((t(end) - t(1)) / UI);
+    if total_ui < N1
+        error('Input waveform is too short. Need at least 20*N UIs of data.');
+    end
+
+    % Use a centered N1-UI window to reduce edge sensitivity.
+    start_ui = floor((total_ui - N1) / 2);
+    t_start = t(1) + start_ui * UI;
     t_end = t_start + N1 * UI;
 
     % ---- Generate M uniformly spaced sample offsets inside each UI ----
@@ -64,8 +70,7 @@ function [y, Y, info] = resample_qprbs13_cei_step1(t, v_tx, M)
 
     % ---- Ensure interpolation range is covered ----
     if t_sample(1,1) < t(1) || t_sample(end,end) > t(end)
-        error(['Input waveform does not cover required range: ', ...
-               '[second cycle first UI, 21st cycle last UI].']);
+        error('Input waveform does not cover required 20*N UI sampling window.');
     end
 
     % ---- Resample by interpolation ----
