@@ -11,6 +11,7 @@ function [y, Y, info] = resample_qprbs13_cei_step1(t, v_tx, M)
 %   y    : resampled waveform sequence, column vector, length M*(20*N)
 %   Y    : M x N matrix (UI-blocked, averaged across 20 analyzed cycles)
 %   info : struct with constants and intermediate indexing metadata
+%          includes y_matrix_full (M x 20*N) and m_center index
 %
 % Global parameters (must-use)
 %   Data rate    : 224G PAM4
@@ -89,4 +90,6 @@ function [y, Y, info] = resample_qprbs13_cei_step1(t, v_tx, M)
     info.t_end = t_end;
     info.ui_offsets = ui_offsets;
     info.sample_time_grid = t_sample;
+    info.y_matrix_full = y_mat;
+    info.m_center = round(M / 2);
 end
