@@ -94,8 +94,8 @@ module qprbs13_cei_gen(
             S12 = (seed13 >> 12) & 1;
 
             // Define deterministic startup outputs from current state
-            a_raw = S0;
-            b_raw = S1;
+            a_raw = S1;
+            b_raw = S0;
 
             if (gray_enable != 0) begin
                 // 2-bit binary -> Gray: g1=b1, g0=b1^b0
@@ -140,8 +140,8 @@ module qprbs13_cei_gen(
             S11 = (seed13 >> 11) & 1;
             S12 = (seed13 >> 12) & 1;
 
-            a_raw = S0;
-            b_raw = S1;
+            a_raw = S1;
+            b_raw = S0;
 
             if (gray_enable != 0) begin
                 a_out = a_raw;
@@ -186,8 +186,8 @@ module qprbs13_cei_gen(
                 S11 = (seed13 >> 11) & 1;
                 S12 = (seed13 >> 12) & 1;
 
-                a_raw = S0;
-                b_raw = S1;
+                a_raw = S1;
+                b_raw = S0;
             end else begin
                 // Figure-16-19 XOR network
                 x_top_r    = S12 ^ S10;
@@ -247,8 +247,8 @@ module qprbs13_cei_gen(
                 S12 = nS12;
 
                 // Output bits picked at figure left boundary (new injections)
-                a_raw = nS0;
-                b_raw = nS1;
+                a_raw = nS1;
+                b_raw = nS0;
             end
 
             // Gray option for A/B output pair
