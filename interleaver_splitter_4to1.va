@@ -1,0 +1,159 @@
+`include "disciplines.vams"
+
+// 4-to-1 interleaver splitter
+// Target mapping with UI-sampled symbols S(k):
+//   D0(n) = S(4n+0)
+//   D1(n) = S(4n+1)
+//   D2(n) = S(4n+2)
+//   D3(n) = S(4n+3)
+// i.e. lane0 gets S(0),S(4),S(8)...; lane1 gets S(1),S(5),... etc.
+// Optional self-check mux restoration (enable_mux=1):
+// At each clk4x rising edge, phase p selects lane0/lane1/lane2/lane3 cyclically,
+// so mux_out reconstructs S(0),S(1),S(2),S(3),S(4)...
+
+module interleaver_splitter_4to1(
+    in_s,
+    clk_ui,
+    clk4x,
+    lane0,
+    lane1,
+    lane2,
+    lane3,
+    mux_out
+);
+    inout in_s, clk_ui, clk4x, lane0, lane1, lane2, lane3, mux_out;
+    electrical in_s, clk_ui, clk4x, lane0, lane1, lane2, lane3, mux_out;
+
+    parameter integer PAM = 2;         // 2: NRZ, 4: PAM4
+    parameter real vth = 0.0;          // NRZ threshold
+    parameter real vth1 = -0.5;        // PAM4 thresholds
+    parameter real vth2 = 0.0;
+    parameter real vth3 = 0.5;
+    parameter real v0 = -0.75;         // PAM4 levels for symbols 0..3
+    parameter real v1 = -0.25;
+    parameter real v2 = 0.25;
+    parameter real v3 = 0.75;
+    parameter real v_lo = -0.5;        // NRZ levels for symbols 0/1
+    parameter real v_hi = 0.5;
+    parameter real tr = 1p;
+    parameter real tf = 1p;
+    parameter integer enable_mux = 1;  // 1: drive mux_out, 0: hold mux_out at 0V
+    parameter integer init_symbol = 0; // power-up symbol
+    parameter real vclk_th = 0.0;      // clock crossing threshold
+
+    integer lane0_reg, lane1_reg, lane2_reg, lane3_reg;
+    integer mux_reg;
+    integer k;     // UI sample counter, starts from 0
+    integer p;     // mux phase counter 0..3
+    integer init_sym;
+    integer s_k;
+
+    function integer sanitize_symbol;
+        input integer sym_in;
+        begin
+            if (PAM == 4) begin
+                if (sym_in < 0)
+                    sanitize_symbol = 0;
+                else if (sym_in > 3)
+                    sanitize_symbol = 3;
+                else
+                    sanitize_symbol = sym_in;
+            end else begin
+                if (sym_in <= 0)
+                    sanitize_symbol = 0;
+                else
+                    sanitize_symbol = 1;
+            end
+        end
+    endfunction
+
+    function integer sample_symbol;
+        input real vin;
+        begin
+            if (PAM == 4) begin
+                if (vin < vth1)
+                    sample_symbol = 0;
+                else if (vin < vth2)
+                    sample_symbol = 1;
+                else if (vin < vth3)
+                    sample_symbol = 2;
+                else
+                    sample_symbol = 3;
+            end else begin
+                if (vin > vth)
+                    sample_symbol = 1;
+                else
+                    sample_symbol = 0;
+            end
+        end
+    endfunction
+
+    function real symbol_to_voltage;
+        input integer sym;
+        begin
+            if (PAM == 4) begin
+                case (sym)
+                    0: symbol_to_voltage = v0;
+                    1: symbol_to_voltage = v1;
+                    2: symbol_to_voltage = v2;
+                    default: symbol_to_voltage = v3;
+                endcase
+            end else begin
+                if (sym == 0)
+                    symbol_to_voltage = v_lo;
+                else
+                    symbol_to_voltage = v_hi;
+            end
+        end
+    endfunction
+
+    analog begin
+        @(initial_step) begin
+            init_sym = sanitize_symbol(init_symbol);
+            lane0_reg = init_sym;
+            lane1_reg = init_sym;
+            lane2_reg = init_sym;
+            lane3_reg = init_sym;
+            mux_reg   = init_sym;
+            k = 0;
+            p = 0;
+        end
+
+        // UI sampling: get S(k) on each rising edge, route by k mod 4
+        @(cross(V(clk_ui) - vclk_th, +1)) begin
+            s_k = sample_symbol(V(in_s));
+
+            case (k % 4)
+                0: lane0_reg = s_k; // S(0),S(4),S(8),...
+                1: lane1_reg = s_k; // S(1),S(5),S(9),...
+                2: lane2_reg = s_k; // S(2),S(6),S(10),...
+                default: lane3_reg = s_k; // S(3),S(7),S(11),...
+            endcase
+
+            k = k + 1;
+        end
+
+        // 4:1 mux restoration at clk4x rising edges: p=0,1,2,3 -> lane0..lane3
+        @(cross(V(clk4x) - vclk_th, +1)) begin
+            if (enable_mux != 0) begin
+                case (p)
+                    0: mux_reg = lane0_reg;
+                    1: mux_reg = lane1_reg;
+                    2: mux_reg = lane2_reg;
+                    default: mux_reg = lane3_reg;
+                endcase
+                p = (p + 1) % 4;
+            end
+        end
+
+        V(lane0) <+ transition(symbol_to_voltage(lane0_reg), 0.0, tr, tf);
+        V(lane1) <+ transition(symbol_to_voltage(lane1_reg), 0.0, tr, tf);
+        V(lane2) <+ transition(symbol_to_voltage(lane2_reg), 0.0, tr, tf);
+        V(lane3) <+ transition(symbol_to_voltage(lane3_reg), 0.0, tr, tf);
+
+        if (enable_mux != 0)
+            V(mux_out) <+ transition(symbol_to_voltage(mux_reg), 0.0, tr, tf);
+        else
+            V(mux_out) <+ transition(0.0, 0.0, tr, tf);
+    end
+endmodule
