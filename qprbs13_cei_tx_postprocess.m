@@ -1,34 +1,54 @@
-function out = qprbs13_cei_tx_postprocess(t, v_tx, sym_cycle, cfg)
+function out = qprbs13_cei_tx_postprocess(in1, in2, in3, in4)
 %QPRBS13_CEI_TX_POSTPROCESS CEI/QPRBS13 TX post-processing and SNDR.
 %   out = qprbs13_cei_tx_postprocess(t, v_tx, sym_cycle, cfg)
+%   out = qprbs13_cei_tx_postprocess(t, v_tx, [], cfg)            % auto infer sym
+%   out = qprbs13_cei_tx_postprocess(wave_csv, cfg)               % CSV auto mode
 %
-% This implementation follows the equations and symbols shown in the
-% provided workflow excerpts (Eq. 11-13~11-22, 16-16~16-19, 27-5).
+% CSV auto mode implements: read waveform -> resample -> post-process.
 %
-% Inputs
-%   t         : sampled time vector (s), strictly increasing
-%   v_tx      : TX analog output waveform (V), same length as t
-%   sym_cycle : aligned PAM4 symbol sequence for one QPRBS13-CEI cycle,
-%               length N=8191, values in {-1, -1/3, +1/3, +1}
-%   cfg       : optional struct
-%       .M     (default 64)
-%       .T_Np  (default 29)   % for Eq. 11-16 linear-fit pulse p(k)
-%       .T_Dp  (default 4)
-%       .T_Dw  (default 4)
-%       .T_Nw  (default 20)
-%
-% Output fields
-%   out.step1.y, out.step1.Y, out.step1.info
-%   out.levels.(Vn1, Vn13, Vp13, Vp1, Vmid, ES1, ES2, RLM)
-%   out.fit29.(x, xr, X, X1, P, E, e, sigma_e, P1, p, pmax)
-%   out.eq.(p_i, p_r, P2, P3, xp, w, q_i)
-%   out.fit20.(P, p, vf)
-%   out.sigma_n
-%   out.SNDR_dB
+% The implementation follows Eq. 11-13~11-22, 16-16~16-19, 27-5.
 
-    if nargin < 4
-        cfg = struct();
+    % Parse input modes
+    if ischar(in1) || isstring(in1)
+        % Mode A: qprbs13_cei_tx_postprocess(wave_csv, cfg)
+        wave_csv = in1;
+        if nargin >= 2 && isstruct(in2)
+            cfg = in2;
+        else
+            cfg = struct();
+        end
+
+        [t, v_tx] = local_read_waveform_csv(wave_csv);
+        sym_cycle = local_infer_symbol_cycle_from_waveform(t, v_tx, cfg);
+        out = run_core(t, v_tx, sym_cycle, cfg);
+        out.top = struct('wave_csv', char(wave_csv));
+        return;
     end
+
+    % Mode B: qprbs13_cei_tx_postprocess(t, v_tx, sym_cycle, cfg)
+    t = in1;
+    v_tx = in2;
+
+    if nargin < 3 || isempty(in3)
+        sym_cycle = [];
+    else
+        sym_cycle = in3;
+    end
+
+    if nargin < 4 || isempty(in4)
+        cfg = struct();
+    else
+        cfg = in4;
+    end
+
+    if isempty(sym_cycle)
+        sym_cycle = local_infer_symbol_cycle_from_waveform(t, v_tx, cfg);
+    end
+
+    out = run_core(t, v_tx, sym_cycle, cfg);
+end
+
+function out = run_core(t, v_tx, sym_cycle, cfg)
     M = get_cfg(cfg, 'M', 64);
     T_Np = get_cfg(cfg, 'T_Np', 29);
     T_Dp = get_cfg(cfg, 'T_Dp', 4);
@@ -115,6 +135,88 @@ function out = qprbs13_cei_tx_postprocess(t, v_tx, sym_cycle, cfg)
 
     out.sigma_n = sigma_n;
     out.SNDR_dB = SNDR_dB;
+end
+
+function sym_cycle = local_infer_symbol_cycle_from_waveform(t, v_tx, cfg)
+    M = get_cfg(cfg, 'M', 64);
+    [~, ~, info] = resample_qprbs13_cei_step1(t, v_tx, M);
+
+    N = info.N;
+    y_center = info.y_matrix_full(info.m_center, :).';
+
+    q = quantile(y_center, [0.25, 0.50, 0.75]);
+    labels = ones(size(y_center));
+    labels(y_center > q(1)) = 2;
+    labels(y_center > q(2)) = 3;
+    labels(y_center > q(3)) = 4;
+
+    cent = zeros(4,1);
+    for i = 1:4
+        cent(i) = mean(y_center(labels == i));
+    end
+
+    labels2 = zeros(size(labels));
+    for n = 1:numel(y_center)
+        [~, idx] = min(abs(y_center(n) - cent));
+        labels2(n) = idx;
+    end
+
+    [~, ord] = sort(cent, 'ascend');
+    map = zeros(4,1);
+    map(ord(1)) = -1;
+    map(ord(2)) = -1/3;
+    map(ord(3)) =  1/3;
+    map(ord(4)) =  1;
+    sym_est = map(labels2);
+
+    sym_mat = reshape(sym_est, N, 20);
+    sym_cycle = zeros(N,1);
+    levels = [-1, -1/3, 1/3, 1];
+    for k = 1:N
+        row = sym_mat(k,:);
+        cnt = zeros(1,4);
+        for j = 1:4
+            cnt(j) = sum(abs(row - levels(j)) < 1e-12);
+        end
+        [~, ix] = max(cnt);
+        sym_cycle(k) = levels(ix);
+    end
+end
+
+function [t, v_tx] = local_read_waveform_csv(csv_path)
+    if ~(ischar(csv_path) || isstring(csv_path))
+        error('wave_csv must be a file path.');
+    end
+    if ~isfile(csv_path)
+        error('Waveform CSV not found: %s', csv_path);
+    end
+
+    T = readtable(csv_path);
+    if width(T) < 2
+        error('Waveform CSV must contain at least two columns.');
+    end
+
+    names = lower(string(T.Properties.VariableNames));
+    idx_t = find(names == "t" | names == "time", 1, 'first');
+    idx_v = find(names == "v_tx" | names == "v" | names == "voltage", 1, 'first');
+
+    if isempty(idx_t) || isempty(idx_v)
+        num_cols = false(1, width(T));
+        for k = 1:width(T)
+            num_cols(k) = isnumeric(T{:, k});
+        end
+        num_idx = find(num_cols);
+        if numel(num_idx) < 2
+            error('Waveform CSV has fewer than two numeric columns.');
+        end
+        idx_t = num_idx(1);
+        idx_v = num_idx(2);
+    end
+
+    t = T{:, idx_t};
+    v_tx = T{:, idx_v};
+    t = t(:);
+    v_tx = v_tx(:);
 end
 
 function v = get_cfg(cfg, name, default_v)

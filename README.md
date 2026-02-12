@@ -16,15 +16,20 @@ out = qprbs13_cei_run_from_waveform_csv('waveform.csv', cfg);
 
 执行流程：
 1. 读取 waveform CSV（时间/电压）
-2. 做重采样（`resample_qprbs13_cei_step1`）
-3. 做后处理（`qprbs13_cei_tx_postprocess`）
+2. 重采样
+3. 后处理
 4. 输出完整 `out` 结构，并可自动保存：
    - `result.mat`（完整结果）
    - `metrics.csv`（关键指标：SNDR、sigma_e、sigma_n、pmax、vf、ES1/ES2/RLM）
 
-## 组件函数
+## 函数说明
 
-- 重采样函数：`resample_qprbs13_cei_step1`
-- 后处理函数：`qprbs13_cei_tx_postprocess`
-- CSV入口函数：`qprbs13_cei_tx_postprocess_from_csv`
-- 顶层自动调用：`qprbs13_cei_run_from_waveform_csv`
+- `resample_qprbs13_cei_step1`：重采样函数
+- `qprbs13_cei_tx_postprocess`：后处理主函数（支持直接传 `waveform.csv` 自动执行读取+重采样+后处理）
+- `qprbs13_cei_run_from_waveform_csv`：顶层调用函数（单入口 + 自动保存结果）
+
+## 直接调用后处理函数（CSV 自动模式）
+
+```matlab
+out = qprbs13_cei_tx_postprocess('waveform.csv', cfg);
+```
