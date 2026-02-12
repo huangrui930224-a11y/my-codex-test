@@ -48,8 +48,9 @@ module interleaver_splitter_4to1(
     integer init_sym;
     integer s_k;
 
-    function integer sanitize_symbol;
-        input integer sym_in;
+    analog function integer sanitize_symbol;
+        input sym_in;
+        integer sym_in;
         begin
             if (PAM == 4) begin
                 if (sym_in < 0)
@@ -67,8 +68,9 @@ module interleaver_splitter_4to1(
         end
     endfunction
 
-    function integer sample_symbol;
-        input real vin;
+    analog function integer sample_symbol;
+        input vin;
+        real vin;
         begin
             if (PAM == 4) begin
                 if (vin < vth1)
@@ -88,8 +90,9 @@ module interleaver_splitter_4to1(
         end
     endfunction
 
-    function real symbol_to_voltage;
-        input integer sym;
+    analog function real symbol_to_voltage;
+        input sym;
+        integer sym;
         begin
             if (PAM == 4) begin
                 case (sym)
