@@ -1,23 +1,30 @@
 # my-codex-test
 chatgpt AI assistance
 
-## MATLAB usage (only data.csv with t and v)
+## Top-level auto run (只需要 waveform.csv)
 
-If you only have a waveform CSV (time + voltage), run:
-
-```matlab
-cfg = struct('M',64,'T_Np',29,'T_Dp',4,'T_Dw',4,'T_Nw',20, ...
-             'save_mat',true,'output_mat','result.mat');
-out = qprbs13_cei_tx_postprocess_from_csv('data.csv', [], cfg);
-```
-
-- `data.csv`: at least 2 numeric columns for `t` and `v` (column names can be `t/time` and `v_tx/v/voltage`, or any first two numeric columns).
-- `t` does **not** need to start from 0.
-- Cropped captured waveform is supported as long as it contains at least `20*N` UIs (`N=8191`).
-- When `sym_src=[]`, symbols are automatically inferred from waveform levels.
-
-## MATLAB usage (with symbols)
+你只需要提供包含 `t` 和 `v` 的 waveform CSV：
 
 ```matlab
-out = qprbs13_cei_tx_postprocess_from_csv('waveform.csv', 'symbols.csv', cfg);
+cfg = struct('M',64, ...
+             'save_mat',true, ...
+             'output_mat','result.mat', ...
+             'save_metrics_csv',true, ...
+             'metrics_csv','metrics.csv');
+out = qprbs13_cei_run_from_waveform_csv('waveform.csv', cfg);
 ```
+
+执行流程：
+1. 读取 waveform CSV（时间/电压）
+2. 做重采样（`resample_qprbs13_cei_step1`）
+3. 做后处理（`qprbs13_cei_tx_postprocess`）
+4. 输出完整 `out` 结构，并可自动保存：
+   - `result.mat`（完整结果）
+   - `metrics.csv`（关键指标：SNDR、sigma_e、sigma_n、pmax、vf、ES1/ES2/RLM）
+
+## 组件函数
+
+- 重采样函数：`resample_qprbs13_cei_step1`
+- 后处理函数：`qprbs13_cei_tx_postprocess`
+- CSV入口函数：`qprbs13_cei_tx_postprocess_from_csv`
+- 顶层自动调用：`qprbs13_cei_run_from_waveform_csv`
