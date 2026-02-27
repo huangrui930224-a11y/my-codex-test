@@ -227,3 +227,11 @@ out = cru_transition_jitter_pipeline(t, d, cfg);
 3. 若某一类没有样本，均衡步骤会报错。
 4. 若数据中可用 repeat 太少，EOJ 可能出现 `NaN` 或窗口不足告警。
 5. 建议优先使用 `eoj_start_ui_m` 来定义“从第 m 个 UI 中点触发”的统计起点。
+
+
+---
+
+## 8. Demo测试文档
+
+- 详细可执行测试流程见 `DEMO.md`。
+- 建议按 `DEMO.md` 的 Demo A / Demo B 做最小回归验证。
