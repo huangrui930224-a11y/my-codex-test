@@ -10,10 +10,17 @@ function out = cru_transition_jitter_pipeline(t, v, cfg)
 %   cfg.debug_plot=true, cfg.Npat=8191 (or 511), cfg.eoj_mode='max'|'first3',
 %   cfg.eoj_debug_plot=false, cfg.t0_override=[], cfg.eoj_start_ui_m=[]
 
+% Supported calling patterns:
+%   out = cru_transition_jitter_pipeline(t, v, cfg)
+%   out = cru_transition_jitter_pipeline(filePath, [], cfg)
+% For filePath mode, CSV/TXT is parsed to extract time t and voltage v.
+
+% ---------- Flexible input parsing ----------
+[t, v, cfg] = parse_inputs(t, v, cfg);
+
 % ---------- Input validation ----------
 validateattributes(t, {'double'}, {'column','real','finite','nonempty'}, mfilename, 't', 1);
 validateattributes(v, {'double'}, {'column','real','finite','numel',numel(t)}, mfilename, 'v', 2);
-if ~isstruct(cfg), error('cfg must be a struct.'); end
 required_fields = {'UI','outputDir','context_patterns'};
 for i = 1:numel(required_fields)
     if ~isfield(cfg, required_fields{i}), error('cfg.%s is required.', required_fields{i}); end
@@ -220,6 +227,92 @@ end
 
 % ============================== Local functions ==============================
 
+
+function [t, v, cfg] = parse_inputs(a1, a2, a3)
+% Parse supported signatures and auto-load CSV/TXT when path is provided.
+cfg = a3;
+if ~isstruct(cfg)
+    error('cfg must be a struct.');
+end
+
+if ischar(a1) || (isstring(a1) && isscalar(a1))
+    filePath = char(a1);
+    [t, v] = load_tv_from_file(filePath, cfg);
+    return;
+end
+
+t = a1;
+v = a2;
+if isempty(v)
+    error('When first argument is numeric t, second argument v cannot be empty.');
+end
+end
+
+function [t, v] = load_tv_from_file(filePath, cfg)
+% Load t/v vectors from CSV/TXT file.
+if ~exist(filePath, 'file')
+    error('Input file does not exist: %s', filePath);
+end
+
+if endsWith(lower(filePath), '.csv') || endsWith(lower(filePath), '.txt')
+    % Prefer table for named columns; fallback to matrix.
+    try
+        T = readtable(filePath);
+        [t, v] = extract_tv_from_table(T, cfg);
+    catch
+        M = readmatrix(filePath);
+        [t, v] = extract_tv_from_matrix(M, cfg);
+    end
+else
+    error('Unsupported input file extension. Use .csv or .txt');
+end
+
+t = double(t(:));
+v = double(v(:));
+if numel(t) ~= numel(v)
+    error('Loaded t and v lengths differ.');
+end
+end
+
+function [t, v] = extract_tv_from_table(T, cfg)
+vars = string(T.Properties.VariableNames);
+vars_lower = lower(vars);
+
+% User-specified column names take priority.
+if isfield(cfg, 't_col') && isfield(cfg, 'v_col') && ~isempty(cfg.t_col) && ~isempty(cfg.v_col)
+    t = T.(cfg.t_col);
+    v = T.(cfg.v_col);
+    return;
+end
+
+t_candidates = ["t","time","time_s","timestamp","sec","seconds"];
+v_candidates = ["v","voltage","voltage_v","signal","diff","vdiff"];
+
+it = find(ismember(vars_lower, t_candidates), 1, 'first');
+iv = find(ismember(vars_lower, v_candidates), 1, 'first');
+if ~isempty(it) && ~isempty(iv)
+    t = T.(vars(it));
+    v = T.(vars(iv));
+    return;
+end
+
+M = table2array(T);
+[t, v] = extract_tv_from_matrix(M, cfg);
+end
+
+function [t, v] = extract_tv_from_matrix(M, cfg)
+if size(M,2) < 2
+    error('Input file must contain at least 2 columns for t and v.');
+end
+if isfield(cfg, 't_col_idx') && isfield(cfg, 'v_col_idx') && ~isempty(cfg.t_col_idx) && ~isempty(cfg.v_col_idx)
+    t = M(:, cfg.t_col_idx);
+    v = M(:, cfg.v_col_idx);
+else
+    t = M(:,1);
+    v = M(:,2);
+end
+end
+
 function cfg = apply_defaults(cfg)
 if ~isfield(cfg,'M'), cfg.M = 32; end
 if ~isfield(cfg,'balance_mode'), cfg.balance_mode = 'truncate'; end
@@ -232,6 +325,10 @@ if ~isfield(cfg,'eoj_mode'), cfg.eoj_mode = 'max'; end
 if ~isfield(cfg,'eoj_debug_plot'), cfg.eoj_debug_plot = false; end
 if ~isfield(cfg,'t0_override'), cfg.t0_override = []; end
 if ~isfield(cfg,'eoj_start_ui_m'), cfg.eoj_start_ui_m = []; end
+if ~isfield(cfg,'t_col'), cfg.t_col = ''; end
+if ~isfield(cfg,'v_col'), cfg.v_col = ''; end
+if ~isfield(cfg,'t_col_idx'), cfg.t_col_idx = []; end
+if ~isfield(cfg,'v_col_idx'), cfg.v_col_idx = []; end
 cfg.M = double(cfg.M);
 cfg.rng_seed = double(cfg.rng_seed);
 cfg.Npat = double(cfg.Npat);

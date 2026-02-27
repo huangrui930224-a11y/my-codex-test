@@ -23,6 +23,8 @@
 
 ```matlab
 out = cru_transition_jitter_pipeline(t, v, cfg)
+% 或
+out = cru_transition_jitter_pipeline(filePath, [], cfg)
 ```
 
 - `t`：`Nx1 double`，时间（秒）
@@ -67,6 +69,10 @@ out = cru_transition_jitter_pipeline(t, v, cfg)
 - `cfg.eoj_start_ui_m = []`
   - EOJ 触发起点设为“第 `m` 个 UI 的中点”
   - 当该字段非空时，优先级高于 `t0_override`
+- `cfg.t_col = ''`, `cfg.v_col = ''`
+  - 文件输入模式下，按列名指定时间/电压列（例如 `time_s`、`voltage_v`）
+- `cfg.t_col_idx = []`, `cfg.v_col_idx = []`
+  - 文件输入模式下，按列索引指定时间/电压列（从1开始）
 
 ### 3.3 `m`（`cfg.eoj_start_ui_m`）取值要求
 
@@ -107,6 +113,33 @@ out = cru_transition_jitter_pipeline(t, d, cfg);
 ```matlab
 cfg.eoj_start_ui_m = 1000;   % 第1000个UI中点作为EOJ起点
 out = cru_transition_jitter_pipeline(t, d, cfg);
+```
+
+
+### 4.4 直接传入 CSV/TXT 路径自动读取
+
+```matlab
+cfg = struct();
+cfg.UI = 100e-12;
+cfg.outputDir = './output_demo';
+cfg.context_patterns = {
+    [0 1], [1 0], [1 2], [2 1], [2 3], [3 2], ...
+    [0 2], [2 0], [1 3], [3 1], [0 3], [3 0] ...
+};
+
+% 默认取第1列为t、第2列为v
+out = cru_transition_jitter_pipeline('wave.csv', [], cfg);
+
+% 若列名不是默认语义，可指定列名
+cfg.t_col = 'time_s';
+cfg.v_col = 'voltage_v';
+out = cru_transition_jitter_pipeline('wave.csv', [], cfg);
+
+% 或指定列索引
+cfg = rmfield(cfg, {'t_col','v_col'});
+cfg.t_col_idx = 3;
+cfg.v_col_idx = 5;
+out = cru_transition_jitter_pipeline('wave.txt', [], cfg);
 ```
 
 ### 4.3 使用绝对时间锚点（次优先级）
