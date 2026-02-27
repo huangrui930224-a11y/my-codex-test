@@ -8,7 +8,7 @@ function out = cru_transition_jitter_pipeline(t, v, cfg)
 %   cfg.M=32, cfg.balance_mode='truncate'|'random', cfg.rng_seed=1,
 %   cfg.edge_dir='either'|'rising'|'falling', cfg.th_method='midpoint',
 %   cfg.debug_plot=true, cfg.Npat=8191 (or 511), cfg.eoj_mode='max'|'first3',
-%   cfg.eoj_debug_plot=false
+%   cfg.eoj_debug_plot=false, cfg.t0_override=[]
 
 % ---------- Input validation ----------
 validateattributes(t, {'double'}, {'column','real','finite','nonempty'}, mfilename, 't', 1);
@@ -167,7 +167,13 @@ J3u = prctile(fJ, 99.95) - prctile(fJ, 0.05);
 out = struct();
 out.UI = UI;
 out.Npat = double(cfg.Npat);
-out.t0 = double(t_uniform(1)); % UI#0 start anchor
+% UI#0 start anchor. If cfg.t0_override is provided, it explicitly defines
+% the first trigger/repeat anchor (practice-B controlled alignment).
+if ~isempty(cfg.t0_override)
+    out.t0 = double(cfg.t0_override);
+else
+    out.t0 = double(t_uniform(1));
+end
 out.fc = fc;
 out.omega_c = omega_c;
 out.t_cross_all = t_cross_all;
@@ -212,9 +218,14 @@ if ~isfield(cfg,'debug_plot'), cfg.debug_plot = true; end
 if ~isfield(cfg,'Npat'), cfg.Npat = 8191; end
 if ~isfield(cfg,'eoj_mode'), cfg.eoj_mode = 'max'; end
 if ~isfield(cfg,'eoj_debug_plot'), cfg.eoj_debug_plot = false; end
+if ~isfield(cfg,'t0_override'), cfg.t0_override = []; end
 cfg.M = double(cfg.M);
 cfg.rng_seed = double(cfg.rng_seed);
 cfg.Npat = double(cfg.Npat);
+if ~isempty(cfg.t0_override)
+    cfg.t0_override = double(cfg.t0_override);
+    validateattributes(cfg.t0_override, {'double'}, {'scalar','real','finite'}, mfilename, 'cfg.t0_override');
+end
 end
 
 function tf = edge_direction_match(A, B, edge_dir)
@@ -407,6 +418,17 @@ out.EOJ_num_windows = num_windows_used;
 out.EOJ_notes = notes;
 out.EOJ_Tr_by_class = Tr_by_class;
 out.EOJ_repeat_ids_by_class = rep_by_class;
+
+% Anchor consistency diagnostic (practice-B correctness check):
+% delta_ui = (t_cross - (t0 + ui_idx*UI))/UI should stay bounded and centered.
+delta_ui = (t_cross - (t0 + ui_idx .* UI)) ./ UI;
+out.EOJ_anchor_delta_ui_mean = mean(delta_ui, 'omitnan');
+out.EOJ_anchor_delta_ui_std = std(delta_ui, 0, 'omitnan');
+out.EOJ_anchor_delta_ui_maxabs = max(abs(delta_ui), [], 'omitnan');
+if out.EOJ_anchor_delta_ui_maxabs > 0.5
+    warning('EOJ anchor check: max abs delta_ui = %.4f UI (>0.5 UI). Check cfg.t0_override alignment.', ...
+        out.EOJ_anchor_delta_ui_maxabs);
+end
 
 % Save CSV
 class_id = (1:12).';
