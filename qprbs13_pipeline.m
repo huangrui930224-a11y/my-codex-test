@@ -8,9 +8,9 @@ function out = qprbs13_pipeline(cfg)
 
     res = qprbs13_resample_module(cfg);
     sym = qprbs13_symbol_module(res.Y, cfg);
-    rot = qprbs13_rotate_x_module(sym.x, cfg.Dp);
-    fitOut = qprbs13_linear_fit_module(res.Y, rot.X, cfg);
-    vfOut = qprbs13_steady_state_vf_module(res.Y, rot.X, res.M, cfg);
+    rot = qprbs13_rotate_x_module(sym.x, cfg.Dp, max(cfg.TNp, cfg.TNpVf));
+    fitOut = qprbs13_linear_fit_module(res.Y, rot.xr, cfg);
+    vfOut = qprbs13_steady_state_vf_module(res.Y, rot.xr, res.M, cfg);
     noiseOut = qprbs13_level_noise_module(res.Y, sym.sym_code, cfg);
     sndrOut = qprbs13_sndr_module(fitOut.pmax, fitOut.sigmae, noiseOut.sigma_n);
 

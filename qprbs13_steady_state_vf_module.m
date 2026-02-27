@@ -1,11 +1,11 @@
-function vfOut = qprbs13_steady_state_vf_module(Y, X, M, cfg)
+function vfOut = qprbs13_steady_state_vf_module(Y, xr, M, cfg)
 %QPRBS13_STEADY_STATE_VF_MODULE
 % Recompute linear-fit pulse p(k) with Np=20, then compute steady-state voltage v_f.
 % Eq.(11-12): v_f = (1/M) * sum_k p(k)
 %
 % Inputs
 %   Y   : MxN resampled matrix
-%   X   : NxN matrix from rotated symbols
+%   xr  : rotated symbol vector used to build fitting rows
 %   M   : samples per UI
 %   cfg : optional fields
 %       .NpVf   (default 20)
@@ -30,7 +30,7 @@ function vfOut = qprbs13_steady_state_vf_module(Y, X, M, cfg)
     cfgVf = struct();
     cfgVf.Np = NpVf;
     cfgVf.TNp = TNpVf;
-    fitVf = qprbs13_linear_fit_module(Y, X, cfgVf);
+    fitVf = qprbs13_linear_fit_module(Y, xr, cfgVf);
 
     p_vf = fitVf.p;
     vf = sum(p_vf) / M;

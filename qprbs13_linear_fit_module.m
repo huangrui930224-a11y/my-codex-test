@@ -1,10 +1,10 @@
-function fitOut = qprbs13_linear_fit_module(Y, X, cfg)
+function fitOut = qprbs13_linear_fit_module(Y, xOrX, cfg)
 %QPRBS13_LINEAR_FIT_MODULE
 % Linear fit on resampled data using Eq.(11-16)~(11-18).
 %
 % Inputs
 %   Y : MxN matrix from y(k) reshape (Eq.11-13)
-%   X : NxN matrix built from xr (Eq.11-15)
+%   xOrX : either xr as Nx1 vector, or a pre-built X matrix
 %   cfg.Np  : pulse span parameter (default 29)
 %   cfg.TNp : number of selected rows from X (default 2*Np+1)
 %
@@ -19,18 +19,13 @@ function fitOut = qprbs13_linear_fit_module(Y, X, cfg)
 %   fitOut.X1     : (TNp+1) x N fitting matrix [X(1:TNp,:); ones(1,N)]
 
     Y = double(Y);
-    X = double(X);
+    xOrX = double(xOrX);
 
-    if ndims(Y) ~= 2 || ndims(X) ~= 2
-        error('Y and X must be 2-D matrices.');
+    if ndims(Y) ~= 2
+        error('Y must be a 2-D matrix.');
     end
 
     [M, N] = size(Y);
-    [Nx, Nx2] = size(X);
-    if Nx ~= Nx2 || Nx ~= N
-        error('Dimension mismatch: Y is MxN but X must be NxN.');
-    end
-
     Np = double(get_cfg(cfg, 'Np', 29));
     TNp = double(get_cfg(cfg, 'TNp', 2*Np + 1));
 
@@ -42,7 +37,7 @@ function fitOut = qprbs13_linear_fit_module(Y, X, cfg)
     end
 
     % Build X1 using first TNp rows of X plus a row of ones.
-    X1 = [X(1:TNp, :); ones(1, N)];
+    X1 = build_x1(xOrX, N, TNp);
 
     % Eq.(11-16): P = Y*X1^T*(X1*X1^T)^(-1)
     G = X1 * X1.';
@@ -83,4 +78,31 @@ function v = get_cfg(cfg, name, defaultValue)
     else
         v = defaultValue;
     end
+end
+
+function X1 = build_x1(xOrX, N, TNp)
+    if isvector(xOrX)
+        xr = xOrX(:);
+        if numel(xr) ~= N
+            error('Dimension mismatch: Y is MxN but xr must have N elements.');
+        end
+        ii = (0:TNp-1).';
+        jj = (0:N-1);
+        idx = mod(jj - ii, N) + 1;
+        Xsel = xr(idx);
+    else
+        if ndims(xOrX) ~= 2
+            error('xOrX must be a vector xr or a 2-D matrix X.');
+        end
+        [rowsX, colsX] = size(xOrX);
+        if colsX ~= N
+            error('Dimension mismatch: Y is MxN but X must have N columns.');
+        end
+        if rowsX < TNp
+            error('X has %d rows, but TNp=%d rows are required.', rowsX, TNp);
+        end
+        Xsel = xOrX(1:TNp, :);
+    end
+
+    X1 = [Xsel; ones(1, N)];
 end
