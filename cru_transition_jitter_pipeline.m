@@ -8,7 +8,7 @@ function out = cru_transition_jitter_pipeline(t, v, cfg)
 %   cfg.M=32, cfg.balance_mode='truncate'|'random', cfg.rng_seed=1,
 %   cfg.edge_dir='either'|'rising'|'falling', cfg.th_method='midpoint',
 %   cfg.debug_plot=true, cfg.Npat=8191 (or 511), cfg.eoj_mode='max'|'first3',
-%   cfg.eoj_debug_plot=false, cfg.t0_override=[]
+%   cfg.eoj_debug_plot=false, cfg.t0_override=[], cfg.eoj_start_ui_m=[]
 
 % ---------- Input validation ----------
 validateattributes(t, {'double'}, {'column','real','finite','nonempty'}, mfilename, 't', 1);
@@ -32,6 +32,12 @@ t_uniform = (t(1):Ts:t(end)).';
 v_uniform = interp1(t, v, t_uniform, 'linear');
 N = floor(numel(t_uniform)/M);
 if N < 2, error('Not enough samples after resampling.'); end
+if ~isempty(cfg.eoj_start_ui_m) && cfg.eoj_start_ui_m > (N-1)
+    error('cfg.eoj_start_ui_m must satisfy 0 <= m <= N-1. Got m=%g, N=%g.', cfg.eoj_start_ui_m, N);
+end
+if ~isempty(cfg.eoj_start_ui_m) && ((N-1-cfg.eoj_start_ui_m) < 3*cfg.Npat)
+    warning('cfg.eoj_start_ui_m leaves less than 3 repeats after trigger start; EOJ windows may be insufficient.');
+end
 
 Y = reshape(v_uniform(1:N*M), M, N);
 m0 = round(M/2);
@@ -167,13 +173,19 @@ J3u = prctile(fJ, 99.95) - prctile(fJ, 0.05);
 out = struct();
 out.UI = UI;
 out.Npat = double(cfg.Npat);
-% UI#0 start anchor. If cfg.t0_override is provided, it explicitly defines
-% the first trigger/repeat anchor (practice-B controlled alignment).
-if ~isempty(cfg.t0_override)
+% UI#0 start anchor used by EOJ repeat segmentation.
+% Priority:
+%   1) cfg.eoj_start_ui_m : use midpoint of m-th UI -> t0 = t_uniform(1)+(m+0.5)*UI
+%   2) cfg.t0_override    : explicit absolute time in seconds
+%   3) fallback           : t_uniform(1)
+if ~isempty(cfg.eoj_start_ui_m)
+    out.t0 = double(t_uniform(1) + (cfg.eoj_start_ui_m + 0.5) * UI);
+elseif ~isempty(cfg.t0_override)
     out.t0 = double(cfg.t0_override);
 else
     out.t0 = double(t_uniform(1));
 end
+out.eoj_start_ui_m = double(cfg.eoj_start_ui_m);
 out.fc = fc;
 out.omega_c = omega_c;
 out.t_cross_all = t_cross_all;
@@ -219,12 +231,17 @@ if ~isfield(cfg,'Npat'), cfg.Npat = 8191; end
 if ~isfield(cfg,'eoj_mode'), cfg.eoj_mode = 'max'; end
 if ~isfield(cfg,'eoj_debug_plot'), cfg.eoj_debug_plot = false; end
 if ~isfield(cfg,'t0_override'), cfg.t0_override = []; end
+if ~isfield(cfg,'eoj_start_ui_m'), cfg.eoj_start_ui_m = []; end
 cfg.M = double(cfg.M);
 cfg.rng_seed = double(cfg.rng_seed);
 cfg.Npat = double(cfg.Npat);
 if ~isempty(cfg.t0_override)
     cfg.t0_override = double(cfg.t0_override);
     validateattributes(cfg.t0_override, {'double'}, {'scalar','real','finite'}, mfilename, 'cfg.t0_override');
+end
+if ~isempty(cfg.eoj_start_ui_m)
+    cfg.eoj_start_ui_m = double(cfg.eoj_start_ui_m);
+    validateattributes(cfg.eoj_start_ui_m, {'double'}, {'scalar','real','finite','integer','nonnegative'}, mfilename, 'cfg.eoj_start_ui_m');
 end
 end
 
@@ -328,6 +345,8 @@ cid = cid(valid);
 repeat_id = floor(ui_idx ./ Npat) + 1;
 
 % Repeat start time anchor.
+% NOTE: when cfg.eoj_start_ui_m is provided, out.t0 is already shifted to
+% the midpoint of the m-th UI (m must be integer, m>=0, and m<=N-1).
 if isfield(out,'t0')
     t0 = double(out.t0);
 else
@@ -426,7 +445,7 @@ out.EOJ_anchor_delta_ui_mean = mean(delta_ui, 'omitnan');
 out.EOJ_anchor_delta_ui_std = std(delta_ui, 0, 'omitnan');
 out.EOJ_anchor_delta_ui_maxabs = max(abs(delta_ui), [], 'omitnan');
 if out.EOJ_anchor_delta_ui_maxabs > 0.5
-    warning('EOJ anchor check: max abs delta_ui = %.4f UI (>0.5 UI). Check cfg.t0_override alignment.', ...
+    warning('EOJ anchor check: max abs delta_ui = %.4f UI (>0.5 UI). Check cfg.eoj_start_ui_m/cfg.t0_override alignment.', ...
         out.EOJ_anchor_delta_ui_maxabs);
 end
 
@@ -485,6 +504,7 @@ end
 % cfg.M = 32; cfg.balance_mode='truncate'; cfg.rng_seed=1;
 % cfg.edge_dir='either'; cfg.th_method='midpoint'; cfg.debug_plot=true;
 % cfg.Npat = 8191; cfg.eoj_mode='max'; cfg.eoj_debug_plot=false;
+% cfg.eoj_start_ui_m = 0;  % m-th UI midpoint as EOJ trigger start, m integer >=0
 % out = cru_transition_jitter_pipeline(t, v, cfg);
 % disp(out.EOJ_UI); disp(out.EOJ_s);
 %
