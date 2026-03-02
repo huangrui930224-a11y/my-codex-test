@@ -235,3 +235,67 @@ out = cru_transition_jitter_pipeline(t, d, cfg);
 
 - 详细可执行测试流程见 `DEMO.md`。
 - 建议按 `DEMO.md` 的 Demo A / Demo B 做最小回归验证。
+
+
+---
+
+## 9. 独立统计脚本与顶层接口
+
+为满足“`JRMS/J3u` 与 `EOJ` 分离调用”的需求，新增 2 个独立脚本 + 1 个顶层接口：
+
+1. `jitter_stats_from_csv.m`
+   - 独立执行 `JRMS` / `J3u` 统计
+   - 调用：
+   ```matlab
+   out_jitter = jitter_stats_from_csv(csvPath, cfg)
+   ```
+
+2. `eoj_stats_from_csv.m`
+   - 独立执行 `EOJ` 统计
+   - 调用：
+   ```matlab
+   out_eoj = eoj_stats_from_csv(csvPath, cfg)
+   ```
+
+3. `run_jitter_analysis_from_csv.m`
+   - 顶层统一入口，按 `mode` 选择执行：`'jitter' | 'eoj' | 'both'`
+   - 调用：
+   ```matlab
+   out = run_jitter_analysis_from_csv(csvPath, cfg, mode)
+   ```
+
+### 9.1 输入参数要求（3个接口通用）
+
+- `csvPath`：CSV/TXT 文件路径
+- `cfg`：至少包含
+  - `cfg.UI`
+  - `cfg.outputDir`
+  - `cfg.context_patterns`
+
+### 9.2 CSV 自动识别能力
+
+- 默认自动识别时间/电压列（列名语义匹配）
+- 可手动覆盖：
+  - 列名：`cfg.t_col`, `cfg.v_col`
+  - 列索引：`cfg.t_col_idx`, `cfg.v_col_idx`
+
+### 9.3 示例
+
+```matlab
+cfg = struct();
+cfg.UI = 100e-12;
+cfg.outputDir = './output_demo';
+cfg.context_patterns = {
+    [0 1], [1 0], [1 2], [2 1], [2 3], [3 2], ...
+    [0 2], [2 0], [1 3], [3 1], [0 3], [3 0] ...
+};
+
+% 仅JRMS/J3u
+outJ = run_jitter_analysis_from_csv('wave.csv', cfg, 'jitter');
+
+% 仅EOJ
+outE = run_jitter_analysis_from_csv('wave.csv', cfg, 'eoj');
+
+% 两者都跑
+outB = run_jitter_analysis_from_csv('wave.csv', cfg, 'both');
+```

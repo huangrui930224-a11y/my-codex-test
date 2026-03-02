@@ -172,3 +172,45 @@ out_idx = cru_transition_jitter_pipeline('demo_wave.csv', [], cfg);
 - 函数无报错
 - `EOJ_UI` 可计算
 - 输出文件齐全
+
+
+---
+
+## 6) 新增独立脚本测试（按统计项拆分）
+
+### 6.1 仅运行 JRMS/J3u
+
+```matlab
+cfg = struct();
+cfg.UI = 100e-12;
+cfg.outputDir = './demo_output_split_jitter';
+cfg.context_patterns = {
+    [0 1], [1 0], [1 2], [2 1], [2 3], [3 2], ...
+    [0 2], [2 0], [1 3], [3 1], [0 3], [3 0] ...
+};
+out_jitter = jitter_stats_from_csv('demo_wave.csv', cfg);
+disp(out_jitter.JRMS);
+disp(out_jitter.J3u);
+```
+
+### 6.2 仅运行 EOJ
+
+```matlab
+cfg.outputDir = './demo_output_split_eoj';
+cfg.Npat = 8191;
+out_eoj = eoj_stats_from_csv('demo_wave.csv', cfg);
+disp(out_eoj.EOJ_UI);
+```
+
+### 6.3 顶层接口统一调用
+
+```matlab
+cfg.outputDir = './demo_output_split_both';
+out_all = run_jitter_analysis_from_csv('demo_wave.csv', cfg, 'both');
+```
+
+### 6.4 验收点
+
+- `jitter_stats_from_csv` 可独立输出 `JRMS/J3u`
+- `eoj_stats_from_csv` 可独立输出 `EOJ_UI`
+- `run_jitter_analysis_from_csv(..., 'both')` 可同时返回两套结果
