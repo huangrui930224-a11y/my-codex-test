@@ -25,7 +25,7 @@ function fitOut = qprbs13_linear_fit_module(Y, xOrX, cfg)
         error('Y must be a 2-D matrix.');
     end
 
-    [M, N] = size(Y);
+    [~, N] = size(Y);
     Np = double(get_cfg(cfg, 'Np', 29));
     TNp = double(get_cfg(cfg, 'TNp', 2*Np + 1));
 
