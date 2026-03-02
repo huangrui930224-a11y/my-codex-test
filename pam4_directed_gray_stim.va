@@ -1,0 +1,179 @@
+`include "disciplines.vams"
+`include "constants.vams"
+
+// ============================================================================
+// 12-Class PAM4 A->B Directed Transition Table (strict order)
+//
+// transition_id |   A->B   | Direction | Vth(A,B) rule
+// --------------+----------+-----------+---------------------------------------
+//      0        |   0->1   | Rising    | Vth=(Vlevel(0)+Vlevel(1))/2
+//      1        |   0->2   | Rising    | Vth=(Vlevel(0)+Vlevel(2))/2
+//      2        |   0->3   | Rising    | Vth=(Vlevel(0)+Vlevel(3))/2
+//      3        |   1->2   | Rising    | Vth=(Vlevel(1)+Vlevel(2))/2
+//      4        |   1->3   | Rising    | Vth=(Vlevel(1)+Vlevel(3))/2
+//      5        |   2->3   | Rising    | Vth=(Vlevel(2)+Vlevel(3))/2
+//      6        |   3->2   | Falling   | Vth=(Vlevel(3)+Vlevel(2))/2
+//      7        |   3->1   | Falling   | Vth=(Vlevel(3)+Vlevel(1))/2
+//      8        |   3->0   | Falling   | Vth=(Vlevel(3)+Vlevel(0))/2
+//      9        |   2->1   | Falling   | Vth=(Vlevel(2)+Vlevel(1))/2
+//     10        |   2->0   | Falling   | Vth=(Vlevel(2)+Vlevel(0))/2
+//     11        |   1->0   | Falling   | Vth=(Vlevel(1)+Vlevel(0))/2
+//
+// Level definition:
+//   Vlevel(k) = Vcm + (k - 1.5) * Vstep,  k in {0,1,2,3}
+//
+// Recommended defaults:
+//   L_pre  = 6
+//   L_post = 4
+//
+// L_pre/L_post tuning guidance:
+//   - L_pre must be larger than channel/FFE memory length so the waveform reaches
+//     the intended local steady-state before the directed A->B crossing.
+//   - L_post must be long enough to keep the measured crossing isolated from the
+//     next transition, preventing contamination from following symbols.
+//
+// Segment format (strict):
+//   A repeated L_pre times, then one A->B transition, then B repeated L_post times.
+//   => segment length = L_pre + 1 + L_post symbols.
+//
+// Clock/Reset behavior:
+//   - Active-low reset: rst_n=0 forces internal state to start-point.
+//   - Symbol update only on rising edge of clk.
+//
+// Design intent:
+//   - AAAABB-like structure locks short-term pattern-dependent jitter context.
+//   - L_pre guarantees settling into local state.
+//   - L_post prevents subsequent-transition interference.
+//   - In post-processing, per-transition mean removal is still required to cancel
+//     deterministic offsets.
+//   - This source is intended for fast uncorrelated jitter statistics by class.
+// ============================================================================
+
+module pam4_directed_gray_stim(clk, rst_n, gray_msb, gray_lsb);
+  input clk, rst_n;
+  output gray_msb, gray_lsb;
+  electrical clk, rst_n, gray_msb, gray_lsb;
+
+  parameter real    UI              = 1p;     // Unit Interval (reference only)
+  parameter integer transition_sel  = 0;      // Select transition class 0..11
+  parameter integer sweep_all       = 0;      // =1: auto-sweep all 12 classes
+  parameter integer L_pre           = 6;      // Leading A count (recommend 6)
+  parameter integer L_post          = 4;      // Trailing B count (recommend 4)
+  parameter integer N_repeat        = 2000;   // Segments per class
+  parameter real    Vbit_hi         = 1.0;    // Gray-bit high output level
+  parameter real    Vbit_lo         = 0.0;    // Gray-bit low output level
+  parameter real    tr              = 1p;     // Output transition smoothing
+  parameter integer stop_after_done = 0;      // Stop after one full sweep/selection
+  parameter real    vth_clk         = 0.5;    // Clock edge threshold
+  parameter real    vth_rst         = 0.5;    // Reset assertion threshold (rst_n low)
+
+  integer cur_transition;
+  integer seg_idx;
+  integer ui_idx_in_seg;
+  integer sym;
+  integer A_sym;
+  integer B_sym;
+  integer b1, b0;
+  integer g1, g0;
+  integer total_seg_len;
+
+  analog begin
+    @(initial_step) begin
+      if (transition_sel < 0)
+        cur_transition = 0;
+      else if (transition_sel > 11)
+        cur_transition = 11;
+      else
+        cur_transition = transition_sel;
+
+      if (L_pre < 1 || L_post < 0 || N_repeat < 1)
+        $strobe("pam4_directed_gray_stim warning: invalid L_pre/L_post/N_repeat; expected L_pre>=1, L_post>=0, N_repeat>=1.");
+
+      seg_idx = 0;
+      ui_idx_in_seg = 0;
+      total_seg_len = L_pre + 1 + L_post;
+      sym = 0;
+      b1 = 0; b0 = 0; g1 = 0; g0 = 0;
+    end
+
+    // Active-low asynchronous reset
+    @(cross(V(rst_n) - vth_rst, -1)) begin
+      if (transition_sel < 0)
+        cur_transition = 0;
+      else if (transition_sel > 11)
+        cur_transition = 11;
+      else
+        cur_transition = transition_sel;
+
+      seg_idx = 0;
+      ui_idx_in_seg = 0;
+      sym = 0;
+      b1 = 0; b0 = 0; g1 = 0; g0 = 0;
+    end
+
+    // Update only on clock rising edge when reset is deasserted
+    @(cross(V(clk) - vth_clk, +1)) begin
+      if (V(rst_n) <= vth_rst) begin
+        if (transition_sel < 0)
+          cur_transition = 0;
+        else if (transition_sel > 11)
+          cur_transition = 11;
+        else
+          cur_transition = transition_sel;
+
+        seg_idx = 0;
+        ui_idx_in_seg = 0;
+        sym = 0;
+      end else begin
+        case (cur_transition)
+          0: begin A_sym = 0; B_sym = 1; end
+          1: begin A_sym = 0; B_sym = 2; end
+          2: begin A_sym = 0; B_sym = 3; end
+          3: begin A_sym = 1; B_sym = 2; end
+          4: begin A_sym = 1; B_sym = 3; end
+          5: begin A_sym = 2; B_sym = 3; end
+          6: begin A_sym = 3; B_sym = 2; end
+          7: begin A_sym = 3; B_sym = 1; end
+          8: begin A_sym = 3; B_sym = 0; end
+          9: begin A_sym = 2; B_sym = 1; end
+         10: begin A_sym = 2; B_sym = 0; end
+         default: begin A_sym = 1; B_sym = 0; end // 11
+        endcase
+
+        if (ui_idx_in_seg < L_pre)
+          sym = A_sym;
+        else
+          sym = B_sym;
+
+        ui_idx_in_seg = ui_idx_in_seg + 1;
+        if (ui_idx_in_seg >= total_seg_len) begin
+          ui_idx_in_seg = 0;
+          seg_idx = seg_idx + 1;
+
+          if (seg_idx >= N_repeat) begin
+            seg_idx = 0;
+            if (sweep_all == 1) begin
+              if (cur_transition < 11)
+                cur_transition = cur_transition + 1;
+              else begin
+                cur_transition = 0;
+                if (stop_after_done == 1)
+                  $finish;
+              end
+            end else if (stop_after_done == 1) begin
+              $finish;
+            end
+          end
+        end
+
+        b1 = (sym >> 1) & 1;
+        b0 =  sym       & 1;
+        g1 = b1;
+        g0 = b1 ^ b0;
+      end
+    end
+
+    V(gray_msb) <+ transition(g1 ? Vbit_hi : Vbit_lo, 0, tr);
+    V(gray_lsb) <+ transition(g0 ? Vbit_hi : Vbit_lo, 0, tr);
+  end
+endmodule
