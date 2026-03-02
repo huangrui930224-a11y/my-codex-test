@@ -57,7 +57,6 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
 
     % Step 5: repeat grouping by nominal Npat*UI
     t0 = t_uniform(1);
-    Tpat_nom = cfg.Npat * UI;
 
     % Build or infer transition definitions (12 classes)
     if isfield(cfg, 'trans_def') && ~isempty(cfg.trans_def)
@@ -295,67 +294,95 @@ end
 
 function trans_def = infer_transitions_from_symbols(sym, Npat)
     % Automatic fallback when cfg.trans_def is missing.
-    % Assumption: QPRBS13-CEI has transition classes appearing as AAAABB,
-    % so each class can be represented by one or more stable UI windows
-    % in a repeat. We detect symbol transitions in the first repeat and pick
-    % 12 most populated classes among all directed transitions 0->1..3->2.
-    sym = sym(:);
-    if numel(sym) < Npat + 1
-        error('Not enough UI symbols to infer transitions.');
-    end
-    s0 = sym(1:Npat);
-    s1 = sym(2:Npat+1);
+    %
+    % IMPORTANT AAAABB classification rule used here:
+    % For a transition A->B at boundary n->n+1, we only accept it as a
+    % candidate class event when local context is exactly:
+    %   sym(n-3:n)   = [A A A A]
+    %   sym(n+1:n+2) = [B B]
+    % (i.e., AAAABB with the boundary between 4th A and 1st B).
+    %
+    % This corresponds to "detect AAAABB then classify current transition"
+    % and avoids classifying isolated/noisy transitions without context.
 
-    names = {};
-    pos = {};
+    sym = sym(:);
+    if numel(sym) < Npat + 2
+        error('Not enough UI symbols to infer AAAABB transitions.');
+    end
+    % Use first full pattern for robust/specific index extraction.
+    s = sym(1:Npat);
+
+    % Collect all AAAABB-qualified boundaries in one repeat.
+    % boundary UI index n means transition from UI n to n+1.
+    class_pos = cell(4, 4);
+    for n = 4:(Npat - 2)
+        A = s(n);
+        B = s(n + 1);
+        if A == B
+            continue;
+        end
+        left_ok = all(s(n-3:n) == A);
+        right_ok = all(s(n+1:n+2) == B);
+        if left_ok && right_ok
+            class_pos{A+1, B+1}(end+1) = n; %#ok<AGROW>
+        end
+    end
+
+    % Build all 12 directed classes explicitly, each class picks one
+    % representative window (first AAAABB hit in repeat0).
+    trans_def = repmat(struct('name', '', 'begin_ui', 1, 'end_ui', 1, ...
+        'thr_type', 'th12', 'dir', 'rise'), 1, 12);
+
+    idx = 0;
+    missing = {};
     for a = 0:3
         for b = 0:3
-            if a == b, continue; end
-            id = (s0 == a) & (s1 == b);
-            idx = find(id);
-            if ~isempty(idx)
-                names{end+1} = sprintf('%d%d', a, b); %#ok<AGROW>
-                pos{end+1} = idx; %#ok<AGROW>
+            if a == b
+                continue;
+            end
+            idx = idx + 1;
+            nm = sprintf('%d%d', a, b);
+            trans_def(idx).name = nm;
+            trans_def(idx).dir = ternary(b > a, 'rise', 'fall');
+            trans_def(idx).thr_type = choose_thr_type_by_levels(a, b);
+
+            pos = class_pos{a+1, b+1};
+            if isempty(pos)
+                missing{end+1} = nm; %#ok<AGROW>
+                % Fallback to broad repeat window; later crossing stage may
+                % still fail and return NaN, but class remains defined.
+                trans_def(idx).begin_ui = 1;
+                trans_def(idx).end_ui = Npat;
+            else
+                trans_def(idx).begin_ui = pos(1);
+                trans_def(idx).end_ui = pos(1);
             end
         end
     end
-    if numel(names) < 12
-        error('Auto-infer failed: fewer than 12 directed transition classes found.');
+
+    if ~isempty(missing)
+        warning('AAAABB auto-infer missing classes in repeat0: %s', strjoin(missing, ', '));
     end
+end
 
-    counts = cellfun(@numel, pos);
-    [~, ord] = sort(counts, 'descend');
-    pick = ord(1:12);
-
-    trans_def = repmat(struct('name', '', 'begin_ui', 1, 'end_ui', 1, 'thr_type', 'th12', 'dir', 'rise'), 1, 12);
-    for i = 1:12
-        nm = names{pick(i)};
-        ui_idx = pos{pick(i)};
-        trans_def(i).name = nm;
-        trans_def(i).begin_ui = ui_idx(1);
-        trans_def(i).end_ui = ui_idx(1);
-
-        a = str2double(nm(1));
-        b = str2double(nm(2));
-        trans_def(i).dir = ternary(b > a, 'rise', 'fall');
-        hi = max(a, b);
-        lo = min(a, b);
-        if lo == 0 && hi == 1
-            trans_def(i).thr_type = 'th01';
-        elseif lo == 1 && hi == 2
-            trans_def(i).thr_type = 'th12';
-        elseif lo == 2 && hi == 3
-            trans_def(i).thr_type = 'th23';
+function thr_type = choose_thr_type_by_levels(a, b)
+    hi = max(a, b);
+    lo = min(a, b);
+    if lo == 0 && hi == 1
+        thr_type = 'th01';
+    elseif lo == 1 && hi == 2
+        thr_type = 'th12';
+    elseif lo == 2 && hi == 3
+        thr_type = 'th23';
+    else
+        % For 2-level jump, pick threshold nearest to midpoint.
+        mid = (a + b) / 2;
+        if mid < 1
+            thr_type = 'th01';
+        elseif mid < 2
+            thr_type = 'th12';
         else
-            % Multi-level jump fallback: use middle threshold nearest to midpoint
-            mid = (a + b) / 2;
-            if mid < 1
-                trans_def(i).thr_type = 'th01';
-            elseif mid < 2
-                trans_def(i).thr_type = 'th12';
-            else
-                trans_def(i).thr_type = 'th23';
-            end
+            thr_type = 'th23';
         end
     end
 end
