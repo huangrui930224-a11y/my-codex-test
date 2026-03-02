@@ -44,3 +44,8 @@ fprintf('EOJ_i(ps):\n');
 disp(out.EOJ_i_ps);
 fprintf('ref transition index: %d\n', out.ref_transition);
 fprintf('Tpat_est : %.6f ns\n', out.Tpat_est * 1e9);
+
+fprintf('symbol_mean_voltage [V0 V1 V2 V3] (V):\n');
+disp(out.symbol_mean_voltage);
+fprintf('crossing thresholds [th01 th12 th23] (V):\n');
+disp([out.th01, out.th12, out.th23]);

@@ -211,8 +211,10 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     out.Tpat_est = Tpat_est;
 
     out.V0 = V0; out.V1 = V1; out.V2 = V2; out.V3 = V3;
+    out.symbol_mean_voltage = [V0, V1, V2, V3];
     out.centers_sorted = centers_sorted;
     out.th01 = th01; out.th12 = th12; out.th23 = th23;
+    out.crossing_threshold = struct('th01', th01, 'th12', th12, 'th23', th23);
 
     out.trans_def = trans_def;
     out.trans = trans;
@@ -228,6 +230,10 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     if cfg.verbose
         fprintf('[EOJ] EOJ = %.6f ps (%.6f UI), ref transition = %d (%s), Tpat_est = %.3f ns\n', ...
             out.EOJ_ps, out.EOJ_UI, ref_i, trans(ref_i).name, out.Tpat_est * 1e9);
+        fprintf('[EOJ] Symbol mean voltages [V0 V1 V2 V3] = [%.6g %.6g %.6g %.6g] V\n', ...
+            out.symbol_mean_voltage(1), out.symbol_mean_voltage(2), out.symbol_mean_voltage(3), out.symbol_mean_voltage(4));
+        fprintf('[EOJ] Crossing thresholds [th01 th12 th23] = [%.6g %.6g %.6g] V\n', ...
+            out.th01, out.th12, out.th23);
     end
 end
 
