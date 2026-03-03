@@ -28,7 +28,7 @@ cd('/workspace/my-codex-test');
 
 cfg = struct();
 cfg.csvPath = '/path/to/your/data.csv';   % 改成你的 CSV 路径
-cfg.tStableStart = 1e-6;                  % 改成你的稳定起点(秒)
+cfg.tStableStart = 1e-6;                  % 当 useFirstCrossing=false 时作为扫描中心
 cfg.outputDir = fullfile(pwd, 'demo_out_pipeline');
 
 % 可选参数（不填则走默认）
@@ -38,6 +38,7 @@ cfg.outputDir = fullfile(pwd, 'demo_out_pipeline');
 % cfg.numCycles = 7;
 % cfg.dtScan = [];             % 空则使用 Ts/8
 % cfg.scanWindowUI = 0.5;
+% cfg.useFirstCrossing = true; % true: 起点固定为第一个 crossing time
 % cfg.uiSampleMethod = 'center'; % or 'mean'
 % cfg.clusterMethod = 'kmeans';  % or 'gmm'
 % cfg.saveCycles = true;

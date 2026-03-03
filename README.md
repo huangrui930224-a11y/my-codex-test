@@ -16,7 +16,7 @@ MATLAB QPRBS13/PAM4 分析工具集合。当前仓库提供从 CSV 波形到符�
 
 ### 重采样相关
 - `qprbs13_resample_module.m`
-  - 从 CSV 读取波形并执行 `t0` 扫描、7 周期重采样、`y_avg` 与 `Y` 生成。
+  - 从 CSV 读取波形并执行起点确定（默认使用第一个 crossing time；可切换为 `t0` 扫描）、7 周期重采样、`y_avg` 与 `Y` 生成。
   - 支持两种 CSV 格式：
     1) 有表头：`t, vdiff`
     2) 无表头：默认第 1 列时间、第 2 列电压。

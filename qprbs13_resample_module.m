@@ -96,15 +96,26 @@ function [t0Candidates, J, t0Best, const] = scan_t0(t, vdiff, cfg)
     const.Tpat = const.N * const.ui;
     const.MN = const.M * const.N;
 
-    t0Min = double(cfg.tStableStart - cfg.scanWindowUI * const.ui);
-    t0Max = double(cfg.tStableStart + cfg.scanWindowUI * const.ui);
-
-    t0Candidates = (t0Min:cfg.dtScan:t0Max).';
-    if isempty(t0Candidates) || t0Candidates(end) < t0Max
-        t0Candidates = [t0Candidates; t0Max]; %#ok<AGROW>
+    useFirstCrossing = true;
+    if isfield(cfg, 'useFirstCrossing') && ~isempty(cfg.useFirstCrossing)
+        useFirstCrossing = logical(cfg.useFirstCrossing);
     end
 
-    J = inf(size(t0Candidates), 'double');
+    if useFirstCrossing
+        t0Cross = find_first_crossing_time(t, vdiff);
+        t0Candidates = double(t0Cross);
+        J = 0;
+    else
+        t0Min = double(cfg.tStableStart - cfg.scanWindowUI * const.ui);
+        t0Max = double(cfg.tStableStart + cfg.scanWindowUI * const.ui);
+
+        t0Candidates = (t0Min:cfg.dtScan:t0Max).';
+        if isempty(t0Candidates) || t0Candidates(end) < t0Max
+            t0Candidates = [t0Candidates; t0Max]; %#ok<AGROW>
+        end
+
+        J = inf(size(t0Candidates), 'double');
+    end
     for i = 1:numel(t0Candidates)
         t0 = t0Candidates(i);
         tEnd = t0 + (cfg.numCycles - 1) * const.Tpat + (const.MN - 1) * const.Ts;
@@ -129,13 +140,17 @@ function [t0Candidates, J, t0Best, const] = scan_t0(t, vdiff, cfg)
 
         yAvgTmp = mean(yCycles, 2);
         d = yCycles - yAvgTmp;
-        J(i) = sum(d(:).^2);
+        if ~useFirstCrossing
+            J(i) = sum(d(:).^2);
+        else
+            J(i) = 0;
+        end
     end
 
     [jMin, idxMin] = min(J);
     if isinf(jMin)
-        reqStart = t0Min;
-        reqEnd = t0Max + (cfg.numCycles - 1) * const.Tpat + (const.MN - 1) * const.Ts;
+        reqStart = t0Candidates(1);
+        reqEnd = t0Candidates(end) + (cfg.numCycles - 1) * const.Tpat + (const.MN - 1) * const.Ts;
         error(['No valid t0 in scan window. Need data to cover about [%.16g, %.16g] s. ', ...
                'Available [%.16g, %.16g] s.'], reqStart, reqEnd, t(1), t(end));
     end
@@ -148,6 +163,27 @@ function [t0Candidates, J, t0Best, const] = scan_t0(t, vdiff, cfg)
         error(['Insufficient data coverage. Required [%.16g, %.16g] s, ', ...
                'available [%.16g, %.16g] s.'], reqStart, reqEnd, t(1), t(end));
     end
+end
+
+
+function tCross = find_first_crossing_time(t, v)
+    t = double(t(:));
+    v = double(v(:));
+
+    iZero = find(v == 0, 1, 'first');
+    if ~isempty(iZero)
+        tCross = t(iZero);
+        return;
+    end
+
+    idx = find(v(1:end-1) .* v(2:end) < 0, 1, 'first');
+    if isempty(idx)
+        error('No crossing found in waveform. Cannot set start point to first crossing time.');
+    end
+
+    t1 = t(idx); t2 = t(idx+1);
+    v1 = v(idx); v2 = v(idx+1);
+    tCross = t1 + (0 - v1) * (t2 - t1) / (v2 - v1);
 end
 
 function [yCycles, yAvg, Y] = resample_with_t0(t, vdiff, t0Best, const, numCycles)
