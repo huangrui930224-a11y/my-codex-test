@@ -122,10 +122,10 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     end
 
     %% ==============================
-    % Step 6 识别 AAAABB transition
+    % Step 6 识别 AAAABB transition（先记录候选UI索引，统计放在CRU之后）
     % ===============================
     transition_names = generate_transition_names(); % 固定 12 类
-    class_indices = cell(12, 1); % 每类存 UI index（crossing 所在 UI）
+    class_indices_candidate = cell(12, 1); % 每类先存候选 UI index
 
     for n = 1:(N_UI - 5)
         A = symbol(n);
@@ -137,7 +137,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
                 if cls > 0
                     % crossing 发生在 A->B 切换处，即第 n+4 个 UI 的开始边界附近
                     ui_idx = n + 4;
-                    class_indices{cls}(end+1, 1) = ui_idx; %#ok<AGROW>
+                    class_indices_candidate{cls}(end+1, 1) = ui_idx; %#ok<AGROW>
                 end
             end
         end
@@ -164,47 +164,41 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     th23 = (V(3) + V(4)) / 2;
 
     %% ==============================
-    % Step 9 提取 crossing time
+    % Step 9 先提取所有 crossing time（不按 AAAABB 分类）
     % ===============================
-    tcross_abs = nan(N_UI, 1);       % 每个 UI 最多记录一个 crossing
-    tcross_cls = nan(N_UI, 1);       % crossing 对应的 transition 类别
+    tcross_abs = nan(N_UI, 1);       % 每UI边界（对应UI索引）的 crossing 时间
+    cross_A = nan(N_UI, 1);          % crossing 前符号
+    cross_B = nan(N_UI, 1);          % crossing 后符号
     crossing_not_found = 0;
 
-    for cls = 1:12
-        idx_list = class_indices{cls};
-        for kk = 1:numel(idx_list)
-            ui_idx = idx_list(kk);
-            if ui_idx < 1 || ui_idx > N_UI
-                continue;
-            end
+    for ui_idx = 2:N_UI
+        A = symbol(ui_idx - 1);
+        B = symbol(ui_idx);
 
-            A = symbol(ui_idx - 1);
-            B = symbol(ui_idx);
-            th = choose_threshold(A, B, th01, th12, th23);
+        % 仅在发生电平变化时提取 crossing
+        if A == B
+            continue;
+        end
 
-            % crossing 常发生在 UI 边界附近，
-            % 仅在当前 UI 内搜索会漏掉 "前一UI末样本 -> 当前UI首样本" 的跨边界穿越。
-            t_boundary = Tui(ui_idx, 1);
-            if ui_idx >= 2
-                vwin = [y(ui_idx - 1, :), y(ui_idx, :)];
-                twin = [Tui(ui_idx - 1, :), Tui(ui_idx, :)];
-            else
-                vwin = y(ui_idx, :);
-                twin = Tui(ui_idx, :);
-            end
+        th = choose_threshold(A, B, th01, th12, th23);
 
-            [tc, ok] = find_crossing_near_boundary(twin, vwin, th, A, B, t_boundary);
-            if ok
-                tcross_abs(ui_idx) = tc;
-                tcross_cls(ui_idx) = cls;
-            else
-                crossing_not_found = crossing_not_found + 1;
-            end
+        % crossing 常发生在 UI 边界附近，使用跨边界窗口搜索
+        t_boundary = Tui(ui_idx, 1);
+        vwin = [y(ui_idx - 1, :), y(ui_idx, :)];
+        twin = [Tui(ui_idx - 1, :), Tui(ui_idx, :)];
+
+        [tc, ok] = find_crossing_near_boundary(twin, vwin, th, A, B, t_boundary);
+        if ok
+            tcross_abs(ui_idx) = tc;
+            cross_A(ui_idx) = A;
+            cross_B(ui_idx) = B;
+        else
+            crossing_not_found = crossing_not_found + 1;
         end
     end
 
     if crossing_not_found > 0
-        warning('有 %d 个 transition 未找到 crossing。', crossing_not_found);
+        warning('有 %d 个电平变化 UI 未找到 crossing。', crossing_not_found);
     end
 
     %% ==============================
@@ -242,7 +236,16 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     drop_n = 500;
 
     for cls = 1:12
-        idx_all = find(tcross_cls == cls & ~isnan(tie_HF));
+        idx_cand = class_indices_candidate{cls};
+        idx_cand = idx_cand(~isnan(tie_HF(idx_cand))); % 先经过CRU并且有crossing的样本
+        % 再次校验 A->B 与类别一致（避免误配）
+        if ~isempty(idx_cand)
+            ab = parse_transition_name(transition_names{cls});
+            keep = (cross_A(idx_cand) == ab(1)) & (cross_B(idx_cand) == ab(2));
+            idx_all = idx_cand(keep);
+        else
+            idx_all = [];
+        end
         s = tie_HF(idx_all);
 
         if numel(s) > drop_n
@@ -482,6 +485,15 @@ function q = prctile_no_toolbox(x, p)
     else
         q = x(lo) * (1 - w) + x(hi) * w;
     end
+end
+
+function ab = parse_transition_name(name)
+    % 将 'A->B' 解析为 [A B]（兼容无 toolbox 环境）
+    tok = regexp(name, '^(\d)->(\d)$', 'tokens', 'once');
+    if isempty(tok)
+        error('非法 transition 名称: %s', name);
+    end
+    ab = [str2double(tok{1}), str2double(tok{2})];
 end
 
 function make_plots(y_center, symbol, transition_names, Ni, dt_all, t_low, t_high)
