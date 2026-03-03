@@ -5,8 +5,8 @@ function fitOut = qprbs13_linear_fit_module(Y, X, cfg)
 % Inputs
 %   Y : MxN matrix from y(k) reshape (Eq.11-13)
 %   X : NxN matrix built from xr (Eq.11-15)
-%   cfg.Np  : pulse span parameter (default 29)
-%   cfg.TNp : number of selected rows from X (default 2*Np+1)
+%   cfg.Np  : linear-fit length parameter (default 29)
+%   cfg.TNp : same as Np per protocol (default Np)
 %
 % Outputs
 %   fitOut.P      : M x (TNp+1) coefficient matrix (Eq.11-16)
@@ -32,10 +32,14 @@ function fitOut = qprbs13_linear_fit_module(Y, X, cfg)
     end
 
     Np = double(get_cfg(cfg, 'Np', 29));
-    TNp = double(get_cfg(cfg, 'TNp', 2*Np + 1));
+    TNp = double(get_cfg(cfg, 'TNp', Np));
 
     validateattributes(Np, {'numeric'}, {'real','finite','integer','positive','scalar'});
     validateattributes(TNp, {'numeric'}, {'real','finite','integer','positive','scalar'});
+
+    if Np ~= TNp
+        error('Per protocol, Np and TNp must be identical. Got Np=%g, TNp=%g.', Np, TNp);
+    end
 
     if TNp > N
         error('TNp=%d exceeds N=%d. Reduce TNp or increase N.', TNp, N);

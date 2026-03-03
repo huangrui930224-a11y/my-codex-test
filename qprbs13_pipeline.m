@@ -100,9 +100,9 @@ function cfg = normalize_cfg(cfg)
     cfg.saveCycles = logical(get_cfg(cfg, 'saveCycles', false));
     cfg.Dp = double(get_cfg(cfg, 'Dp', 4));
     cfg.Np = double(get_cfg(cfg, 'Np', 29));
-    cfg.TNp = double(get_cfg(cfg, 'TNp', 2*cfg.Np + 1));
+    cfg.TNp = double(get_cfg(cfg, 'TNp', cfg.Np));
     cfg.NpVf = double(get_cfg(cfg, 'NpVf', 20));
-    cfg.TNpVf = double(get_cfg(cfg, 'TNpVf', 2*cfg.NpVf + 1));
+    cfg.TNpVf = double(get_cfg(cfg, 'TNpVf', cfg.NpVf));
     cfg.minRunLen = double(get_cfg(cfg, 'minRunLen', 6));
     cfg.fixedSampleMethod = lower(char(get_cfg(cfg, 'fixedSampleMethod', 'center')));
     cfg.fixedSampleIndex = double(get_cfg(cfg, 'fixedSampleIndex', round(cfg.M/2)));
@@ -127,6 +127,12 @@ function cfg = normalize_cfg(cfg)
     end
     if ~(strcmp(cfg.clusterMethod, 'kmeans') || strcmp(cfg.clusterMethod, 'gmm'))
         error('cfg.clusterMethod must be ''kmeans'' or ''gmm''.');
+    end
+    if cfg.Np ~= cfg.TNp
+        error('Per protocol, cfg.Np and cfg.TNp must be identical.');
+    end
+    if cfg.NpVf ~= cfg.TNpVf
+        error('Per protocol, cfg.NpVf and cfg.TNpVf must be identical.');
     end
     if cfg.TNp > cfg.N
         error('cfg.TNp must be <= cfg.N.');

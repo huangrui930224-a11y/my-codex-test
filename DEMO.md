@@ -44,9 +44,9 @@ cfg.outputDir = fullfile(pwd, 'demo_out_pipeline');
 % cfg.saveCycles = true;
 % cfg.Dp = 4;              % pulse delay for xr/X (Eq.11-14/11-15)
 % cfg.Np = 29;              % linear-fit parameter
-% cfg.TNp = 2*cfg.Np+1;     % rows from X used in Eq.(11-16)
+% cfg.TNp = cfg.Np;          % 协议要求 TNp 与 Np 相同
 % cfg.NpVf = 20;             % steady-state refit uses Np=20
-% cfg.TNpVf = 2*cfg.NpVf+1;  % rows from X used for vf refit
+% cfg.TNpVf = cfg.NpVf;      % 协议要求 TNpVf 与 NpVf 相同
 % cfg.minRunLen = 6;          % >=6 连续相同符号 run 才参与噪声统计
 % cfg.fixedSampleMethod = 'center'; % or 'index'
 % cfg.fixedSampleIndex = 16;   % 当 method='index' 时生效

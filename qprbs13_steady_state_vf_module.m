@@ -9,7 +9,7 @@ function vfOut = qprbs13_steady_state_vf_module(Y, X, M, cfg)
 %   M   : samples per UI
 %   cfg : optional fields
 %       .NpVf   (default 20)
-%       .TNpVf  (default 2*NpVf+1)
+%       .TNpVf  (same as NpVf per protocol; default NpVf)
 %
 % Outputs
 %   vfOut.vf          : steady-state voltage estimate
@@ -22,10 +22,14 @@ function vfOut = qprbs13_steady_state_vf_module(Y, X, M, cfg)
     M = double(M);
 
     NpVf = double(get_cfg(cfg, 'NpVf', 20));
-    TNpVf = double(get_cfg(cfg, 'TNpVf', 2*NpVf + 1));
+    TNpVf = double(get_cfg(cfg, 'TNpVf', NpVf));
 
     validateattributes(NpVf, {'numeric'}, {'real','finite','integer','positive','scalar'});
     validateattributes(TNpVf, {'numeric'}, {'real','finite','integer','positive','scalar'});
+
+    if NpVf ~= TNpVf
+        error('Per protocol, NpVf and TNpVf must be identical. Got NpVf=%g, TNpVf=%g.', NpVf, TNpVf);
+    end
 
     cfgVf = struct();
     cfgVf.Np = NpVf;

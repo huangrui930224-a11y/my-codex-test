@@ -51,13 +51,14 @@ MATLAB QPRBS13/PAM4 分析工具集合。仓库提供从 CSV 波形到符号推�
 ### `qprbs13_linear_fit_module.m`
 - 功能：线性拟合得到脉冲与误差。
 - 关键计算：
+  - 协议约束：`Np` 与 `TNp` 视为同一长度参数（例如 29）
   - 构建 `X1 = [X(1:TNp,:); ones(1,N)]`
   - 计算 `P`, `E = P*X1 - Y`
   - 提取 `e(k)`, `sigmae`, `p(k)`, `pmax`
 - 对应公式：Eq.(11-16) ~ Eq.(11-18)。
 
 ### `qprbs13_steady_state_vf_module.m`
-- 功能：用 `NpVf`（默认 20）重算线性拟合脉冲 `p_vf(k)`，估计稳态电压 `v_f`。
+- 功能：用 `NpVf`（默认 20）重算线性拟合脉冲 `p_vf(k)`，估计稳态电压 `v_f`（协议约束 `TNpVf = NpVf`）。
 - 关键计算：`v_f = sum(p_vf)/M`（Eq.(11-12)）。
 - 输出：`vf`, `p_vf`, `NpVf`, `TNpVf`。
 
