@@ -38,10 +38,20 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     v_uniform = v_uniform(1:N_UI * cfg.M);
     t_uniform = t_uniform(1:N_UI * cfg.M);
 
-    % Step 2: UI block + center sampling
+    % Step 2: UI block + sampling phase optimization
+    % Search mm=1..M and choose best phase by separation score:
+    % score = min(level spacing) / (mean(within-cluster std) + eps)
+    % If no valid phase score, fallback to center sample.
     Vui = reshape(v_uniform, cfg.M, N_UI).';
-    mid_idx = round(cfg.M / 2);
-    y = Vui(:, mid_idx);
+    m_center = round(cfg.M / 2);
+    [m_opt, phase_score, phase_valid] = find_optimal_sampling_phase(Vui, m_center);
+    if phase_valid
+        m = m_opt;
+    else
+        m = m_center;
+        warning('Phase optimization failed, fallback to center sample m=%d.', m_center);
+    end
+    y = Vui(:, m);
 
     % Step 3: infer symbols + 4-level means
     [sym, centers_sorted] = simple_kmeans_1d(y, 4, 100);
@@ -236,6 +246,8 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     out.UI = UI;
     out.t0 = t0;
     out.alpha = alpha;
+    out.phase_search = struct('m_opt', m_opt, 'm_center', m_center, 'm_used', m, ...
+        'valid', phase_valid, 'score', phase_score);
 
     % Step 11: plots
     if cfg.do_plot
@@ -249,6 +261,8 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
             out.symbol_mean_voltage(1), out.symbol_mean_voltage(2), out.symbol_mean_voltage(3), out.symbol_mean_voltage(4));
         fprintf('[EOJ] Crossing thresholds [th01 th12 th23] = [%.6g %.6g %.6g] V\n', ...
             out.th01, out.th12, out.th23);
+        fprintf('[EOJ] Sampling phase m_used=%d (m_opt=%d, m_center=%d, phase_valid=%d)\n', ...
+            out.phase_search.m_used, out.phase_search.m_opt, out.phase_search.m_center, out.phase_search.valid);
     end
 end
 
@@ -281,6 +295,56 @@ function [t, v] = read_csv_two_cols(csv_file)
     if any(diff(t) <= 0)
         error('time column must be strictly increasing.');
     end
+end
+
+function [m_opt, score_vec, valid] = find_optimal_sampling_phase(Vui, m_center)
+    [~, M] = size(Vui);
+    score_vec = nan(1, M);
+    eps0 = 1e-12;
+
+    for mm = 1:M
+        x = Vui(:, mm);
+        [labels, centers] = kmeans_1d_no_toolbox(x, 4, 60);
+        if isempty(labels) || numel(unique(labels)) < 4 || any(isnan(centers))
+            continue;
+        end
+
+        centers = sort(centers(:).');
+        spacing = diff(centers);
+        if any(~isfinite(spacing)) || isempty(spacing)
+            continue;
+        end
+        min_spacing = min(spacing);
+
+        wstd = nan(1, 4);
+        for kk = 0:3
+            xv = x(labels == kk);
+            if numel(xv) < 2
+                wstd(kk+1) = nan;
+            else
+                wstd(kk+1) = std(xv);
+            end
+        end
+        mean_wstd = mean(wstd, 'omitnan');
+        if ~isfinite(mean_wstd)
+            continue;
+        end
+
+        score_vec(mm) = min_spacing / (mean_wstd + eps0);
+    end
+
+    valid_idx = find(isfinite(score_vec));
+    valid = ~isempty(valid_idx);
+    if valid
+        [~, irel] = max(score_vec(valid_idx));
+        m_opt = valid_idx(irel);
+    else
+        m_opt = m_center;
+    end
+end
+
+function [labels, centers] = kmeans_1d_no_toolbox(x, K, max_iter)
+    [labels, centers] = simple_kmeans_1d(x, K, max_iter);
 end
 
 function [labels, centers] = simple_kmeans_1d(x, K, max_iter)

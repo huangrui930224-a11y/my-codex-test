@@ -49,3 +49,7 @@ fprintf('symbol_mean_voltage [V0 V1 V2 V3] (V):\n');
 disp(out.symbol_mean_voltage);
 fprintf('crossing thresholds [th01 th12 th23] (V):\n');
 disp([out.th01, out.th12, out.th23]);
+
+fprintf('sampling phase: m_used=%d, m_opt=%d, m_center=%d, valid=%d\n', ...
+    out.phase_search.m_used, out.phase_search.m_opt, out.phase_search.m_center, out.phase_search.valid);
+fprintf('phase score (first 16):\n'); disp(out.phase_search.score(1:min(16,end)));
