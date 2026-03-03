@@ -24,3 +24,14 @@ for i = 1:numel(result.transition_names)
     fprintf('  %-5s : %d, Tavgi = %.6e s\n', ...
         result.transition_names{i}, result.samples_per_class(i), result.Tavgi_sec(i));
 end
+
+% ===== 新增输出示例 =====
+fprintf('\n[Demo] 每个符号均值 (V): V0=%.6e, V1=%.6e, V2=%.6e, V3=%.6e\n', ...
+    result.symbol_means.V0, result.symbol_means.V1, result.symbol_means.V2, result.symbol_means.V3);
+fprintf('[Demo] 跳变阈值 (V): th01=%.6e, th12=%.6e, th23=%.6e\n', ...
+    result.thresholds.th01, result.thresholds.th12, result.thresholds.th23);
+
+% 可选：导出重采样数据 CSV（time_s, vdiff_V）
+resampled_csv = 'resampled_waveform.csv';
+writematrix([result.resampled.time_s, result.resampled.vdiff_V], resampled_csv);
+fprintf('[Demo] 已导出重采样数据: %s (N=%d)\n', resampled_csv, numel(result.resampled.vdiff_V));

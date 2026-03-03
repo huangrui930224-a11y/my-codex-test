@@ -319,7 +319,12 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     result.fc = fc;
     result.alpha = alpha;
     result.level_centers = cent_sorted;
+    result.symbol_means = struct('V0', V(1), 'V1', V(2), 'V2', V(3), 'V3', V(4));
     result.thresholds = struct('th01', th01, 'th12', th12, 'th23', th23);
+    % 新增输出：重采样数据（time, vdiff）
+    result.resampled = struct('time_s', t_uniform, 'vdiff_V', v_uniform, ...
+                              'time_trim_s', t_trim, 'vdiff_trim_V', v_trim, ...
+                              'M', M, 'Ts', Ts);
     result.transition_names = transition_names;
     result.samples_per_class = Ni_final;
     result.Tavgi_sec = Tavgi;
@@ -334,6 +339,10 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     fprintf('\n=========== PAM4 Jitter Analysis Result ===========\n');
     fprintf('JRMS = %.6e s | %.3f ps | %.6e UI\n', JRMS, JRMS_ps, JRMS_UI);
     fprintf('J3u  = %.6e s | %.3f ps | %.6e UI\n', J3u, J3u_ps, J3u_UI);
+    fprintf('符号均值: V0=%.6e, V1=%.6e, V2=%.6e, V3=%.6e (V)\n', V(1), V(2), V(3), V(4));
+    fprintf('阈值: th01=%.6e, th12=%.6e, th23=%.6e (V)\n', th01, th12, th23);
+    fprintf('重采样数据点数: full=%d, trim=%d, Ts=%.6e s, M=%d\n', ...
+        numel(v_uniform), numel(v_trim), Ts, M);
     fprintf('---------------------------------------------------\n');
     fprintf('每类 transition 最终样本数 (已强制一致 Nmin=%d):\n', Nmin);
     for cls = 1:12
