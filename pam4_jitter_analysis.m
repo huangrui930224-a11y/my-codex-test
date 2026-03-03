@@ -182,10 +182,18 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
             B = symbol(ui_idx);
             th = choose_threshold(A, B, th01, th12, th23);
 
-            vwin = y(ui_idx, :);
-            twin = Tui(ui_idx, :);
+            % crossing 常发生在 UI 边界附近，
+            % 仅在当前 UI 内搜索会漏掉 "前一UI末样本 -> 当前UI首样本" 的跨边界穿越。
+            t_boundary = Tui(ui_idx, 1);
+            if ui_idx >= 2
+                vwin = [y(ui_idx - 1, :), y(ui_idx, :)];
+                twin = [Tui(ui_idx - 1, :), Tui(ui_idx, :)];
+            else
+                vwin = y(ui_idx, :);
+                twin = Tui(ui_idx, :);
+            end
 
-            [tc, ok] = find_crossing_linear(twin, vwin, th, A, B);
+            [tc, ok] = find_crossing_near_boundary(twin, vwin, th, A, B, t_boundary);
             if ok
                 tcross_abs(ui_idx) = tc;
                 tcross_cls(ui_idx) = cls;
@@ -372,33 +380,40 @@ function th = choose_threshold(A, B, th01, th12, th23)
     end
 end
 
-function [tc, ok] = find_crossing_linear(t, v, th, A, B)
+function [tc, ok] = find_crossing_near_boundary(t, v, th, A, B, t_boundary)
     tc = nan;
     ok = false;
 
+    % 方向约束的候选 crossing（上升沿 / 下降沿）
     if B > A
-        idx = find(v(1:end-1) < th & v(2:end) >= th, 1, 'first');
+        cand = find(v(1:end-1) < th & v(2:end) >= th);
     else
-        idx = find(v(1:end-1) > th & v(2:end) <= th, 1, 'first');
+        cand = find(v(1:end-1) > th & v(2:end) <= th);
     end
 
-    if isempty(idx)
-        % 回退：任意过阈值
-        idx = find((v(1:end-1)-th).*(v(2:end)-th) <= 0, 1, 'first');
+    % 若方向约束下没有，回退到任意过阈值
+    if isempty(cand)
+        cand = find((v(1:end-1)-th).*(v(2:end)-th) <= 0);
     end
 
-    if isempty(idx)
+    if isempty(cand)
         return;
     end
 
-    dv = v(idx+1) - v(idx);
-    if abs(dv) < eps
-        tc = t(idx);
-        ok = true;
-        return;
+    % 对所有候选做线性插值，选择离边界最近的 crossing
+    tc_all = nan(numel(cand), 1);
+    for ii = 1:numel(cand)
+        k = cand(ii);
+        dv = v(k+1) - v(k);
+        if abs(dv) < eps
+            tc_all(ii) = t(k);
+        else
+            tc_all(ii) = t(k) + (th - v(k)) * (t(k+1) - t(k)) / dv;
+        end
     end
 
-    tc = t(idx) + (th - v(idx)) * (t(idx+1) - t(idx)) / dv;
+    [~, id_best] = min(abs(tc_all - t_boundary));
+    tc = tc_all(id_best);
     ok = true;
 end
 
