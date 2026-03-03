@@ -35,3 +35,4 @@ fprintf('[Demo] 跳变阈值 (V): th01=%.6e, th12=%.6e, th23=%.6e\n', ...
 resampled_csv = 'resampled_waveform.csv';
 writematrix([result.resampled.time_s, result.resampled.vdiff_V], resampled_csv);
 fprintf('[Demo] 已导出重采样数据: %s (N=%d)\n', resampled_csv, numel(result.resampled.vdiff_V));
+fprintf('[Demo] 重采样起点 t_start_resample = %.6e s\n', result.resampled.t_start_resample);

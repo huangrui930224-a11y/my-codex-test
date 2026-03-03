@@ -65,12 +65,34 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     end
 
     %% ==============================
+    % Step 1.5 估计首个 crossing time（用于设定重采样起点）
+    % ===============================
+    % 说明：用户要求“重采样起点从第一个 crossing time 开始”。
+    % 此处先在原始波形上用中值阈值估计首个穿越点，作为统一重采样起点。
+    th_start = mean(v_raw);
+    t_start_resample = t_raw(1);
+    idx0 = find((v_raw(1:end-1)-th_start).*(v_raw(2:end)-th_start) <= 0, 1, 'first');
+    if ~isempty(idx0)
+        dv0 = v_raw(idx0+1) - v_raw(idx0);
+        if abs(dv0) < eps
+            t_start_resample = t_raw(idx0);
+        else
+            t_start_resample = t_raw(idx0) + (th_start - v_raw(idx0)) * ...
+                (t_raw(idx0+1) - t_raw(idx0)) / dv0;
+        end
+        % 避免数值误差导致起点超界
+        t_start_resample = max(t_raw(1), min(t_start_resample, t_raw(end)));
+    else
+        warning('未检测到首个 crossing，重采样起点回退到 t_raw(1)。');
+    end
+
+    %% ==============================
     % Step 2 重采样
     % ===============================
     UI = 1 / fb;
     Ts = UI / M;
 
-    t_uniform = (t_raw(1):Ts:t_raw(end)).';
+    t_uniform = (t_start_resample:Ts:t_raw(end)).';
     if numel(t_uniform) < M * 20
         warning('重采样后样本偏少，统计可信度可能不足。');
     end
@@ -324,7 +346,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     % 新增输出：重采样数据（time, vdiff）
     result.resampled = struct('time_s', t_uniform, 'vdiff_V', v_uniform, ...
                               'time_trim_s', t_trim, 'vdiff_trim_V', v_trim, ...
-                              'M', M, 'Ts', Ts);
+                              'M', M, 'Ts', Ts, 't_start_resample', t_start_resample);
     result.transition_names = transition_names;
     result.samples_per_class = Ni_final;
     result.Tavgi_sec = Tavgi;
@@ -343,6 +365,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     fprintf('阈值: th01=%.6e, th12=%.6e, th23=%.6e (V)\n', th01, th12, th23);
     fprintf('重采样数据点数: full=%d, trim=%d, Ts=%.6e s, M=%d\n', ...
         numel(v_uniform), numel(v_trim), Ts, M);
+    fprintf('重采样起点 t_start_resample = %.6e s\n', t_start_resample);
     fprintf('---------------------------------------------------\n');
     fprintf('每类 transition 最终样本数 (已强制一致 Nmin=%d):\n', Nmin);
     for cls = 1:12
