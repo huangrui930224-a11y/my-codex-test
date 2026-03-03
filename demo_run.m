@@ -36,3 +36,7 @@ resampled_csv = 'resampled_waveform.csv';
 writematrix([result.resampled.time_s, result.resampled.vdiff_V], resampled_csv);
 fprintf('[Demo] 已导出重采样数据: %s (N=%d)\n', resampled_csv, numel(result.resampled.vdiff_V));
 fprintf('[Demo] 重采样起点 t_start_resample = %.6e s\n', result.resampled.t_start_resample);
+
+fprintf('[Demo] 采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', ...
+    result.sampling_phase.m_center, result.sampling_phase.m_selected, ...
+    result.sampling_phase.m_opt, result.sampling_phase.phase_score);

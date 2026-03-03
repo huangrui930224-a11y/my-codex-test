@@ -120,10 +120,24 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     Tui = reshape(t_trim, M, N_UI).';
 
     %% ==============================
-    % Step 4 中心采样
+    % Step 4 采样相位选择（中心点 + 最优相位搜索）
     % ===============================
-    m = round(M / 2);
     y = reshape(v_trim, M, N_UI).';
+
+    % 基线：中心采样
+    m_center = round(M / 2);
+
+    % 解决“开口最大点不在中心”的问题：
+    % 在 1..M 中搜索全局最佳采样相位，指标为四电平分离度（无 toolbox）。
+    [m_opt, phase_score] = select_best_sampling_phase(y, M);
+
+    if isfinite(phase_score)
+        m = m_opt;
+    else
+        m = m_center;
+        warning('最优采样相位搜索失败，回退到中心采样。');
+    end
+
     y_center = y(:, m);
 
     %% ==============================
@@ -340,6 +354,8 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     result.UI = UI;
     result.fc = fc;
     result.alpha = alpha;
+    result.sampling_phase = struct('m_center', m_center, 'm_selected', m, ...
+                                   'm_opt', m_opt, 'phase_score', phase_score);
     result.level_centers = cent_sorted;
     result.symbol_means = struct('V0', V(1), 'V1', V(2), 'V2', V(3), 'V3', V(4));
     result.thresholds = struct('th01', th01, 'th12', th12, 'th23', th23);
@@ -366,6 +382,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     fprintf('重采样数据点数: full=%d, trim=%d, Ts=%.6e s, M=%d\n', ...
         numel(v_uniform), numel(v_trim), Ts, M);
     fprintf('重采样起点 t_start_resample = %.6e s\n', t_start_resample);
+    fprintf('采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', m_center, m, m_opt, phase_score);
     fprintf('---------------------------------------------------\n');
     fprintf('每类 transition 最终样本数 (已强制一致 Nmin=%d):\n', Nmin);
     for cls = 1:12
@@ -450,6 +467,42 @@ function [tc, ok] = find_crossing_near_boundary(t, v, th, A, B, t_boundary)
     [~, id_best] = min(abs(tc_all - t_boundary));
     tc = tc_all(id_best);
     ok = true;
+end
+
+function [m_opt, best_score] = select_best_sampling_phase(y_ui, M)
+    % 在 1..M 中搜索最优采样相位，使四电平“可分性”最大
+    % score = min(level_spacing) / (mean(within_cluster_std)+eps)
+    m_opt = round(M/2);
+    best_score = -inf;
+
+    for mm = 1:M
+        x = y_ui(:, mm);
+        try
+            [idx_tmp, c_tmp] = kmeans_1d_no_toolbox(x, 4, 60);
+        catch
+            continue;
+        end
+
+        c_sort = sort(c_tmp(:), 'ascend');
+        spacing = diff(c_sort);
+        min_spacing = min(spacing);
+
+        wstd = zeros(4,1);
+        for kk = 1:4
+            members = x(idx_tmp == kk);
+            if numel(members) <= 1
+                wstd(kk) = 0;
+            else
+                wstd(kk) = std(members);
+            end
+        end
+
+        score = min_spacing / (mean(wstd) + eps);
+        if isfinite(score) && score > best_score
+            best_score = score;
+            m_opt = mm;
+        end
+    end
 end
 
 function [idx, centers] = kmeans_1d_no_toolbox(x, k, max_iter)
