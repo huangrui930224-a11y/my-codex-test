@@ -7,6 +7,7 @@ MATLAB QPRBS13/PAM4 分析工具集合。当前仓库提供从 CSV 波形到符�
 ### 顶层与文档
 - `qprbs13_pipeline.m`
   - 顶层总控入口。
+  - 额外输出中心/代理采样后的“符号-电压”对应表 `symbol_voltage_samples.csv`。
   - 串联调用各子模块：重采样、符号反推、旋转建模、线性拟合、稳态 `v_f`、电平噪声、SNDR。
   - 输出 CSV/MAT/PNG 结果。
 - `DEMO.md`

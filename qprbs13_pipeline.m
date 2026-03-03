@@ -176,6 +176,12 @@ function write_outputs(out, outputDir)
     T_sx = table(n, sym_code, sym_cycle, s, x);
     writetable(T_sx, fullfile(outputDir, 's_x_symbols.csv'));
 
+    % Center/proxy sampled symbol-voltage pairs
+    phase_index = repmat(out.selected_phase_index, out.N, 1);
+    voltage_sample = s;
+    T_sv = table(n, phase_index, sym_code, sym_cycle, voltage_sample);
+    writetable(T_sv, fullfile(outputDir, 'symbol_voltage_samples.csv'));
+
     xr = out.xr;
     T_xr = table(n, xr);
     writetable(T_xr, fullfile(outputDir, 'xr.csv'));

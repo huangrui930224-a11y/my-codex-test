@@ -66,6 +66,7 @@ fprintf('ES1 = %.6f, ES2 = %.6f, RLM = %.6f\n', out.ES1, out.ES2, out.RLM);
 - `y_avg.csv`
 - `symbol_means.csv`
 - `s_x_symbols.csv`
+- `symbol_voltage_samples.csv`
 - `J_scan.png`
 - `heatmap_Y.png`
 - `s_hist_centers.png`
