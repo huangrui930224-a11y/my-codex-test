@@ -72,12 +72,23 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         error('Need exactly 12 transition classes.');
     end
 
-    % Step 6: crossing extraction per class/repeat
+    % Step 6) Extract ALL crossing events first (for CRU input), then
+    % extract 12 target transition crossings for EOJ statistics.
+    %
+    % This follows the updated requirement:
+    %   1) CRU uses all available crossing events.
+    %   2) After CRU timeline is obtained, pick AAAABB 12-class transitions.
+
+    use_repeat_start = cfg.discard_first_repeats;
+    ui_start_for_use = use_repeat_start * cfg.Npat + 1;
+
+    all_evt = collect_all_crossing_events(t_uniform, v_uniform, cfg.M, th01, th12, th23, ui_start_for_use);
+
+    % Step 6 (target transitions): crossing extraction per class/repeat
     trans = repmat(struct('tcross_abs', [], 'ui_index_global', [], 'repeat_id', [], ...
         'name', '', 'thr_type', '', 'dir', ''), 1, 12);
 
     max_repeat = floor(N_UI / cfg.Npat) - 1;
-    use_repeat_start = cfg.discard_first_repeats;
 
     for i = 1:12
         trans(i).name = trans_def(i).name;
@@ -116,7 +127,7 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         end
     end
 
-    % Step 7: CRU golden PLL (per-UI update)
+    % Step 7: CRU golden PLL (per-UI update) using ALL crossings.
     fc = cfg.fc;
     alpha = exp(-2 * pi * fc / cfg.fb);
 
@@ -124,20 +135,23 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     has_event = false(N_UI, 1);
     event_value = nan(N_UI, 1);
 
-    for i = 1:12
-        for k = 1:numel(trans(i).tcross_abs)
-            n_ui = trans(i).ui_index_global(k);
-            n0 = n_ui - 1; % zero-based for ideal time equation
-            t_ideal = t0 + n0 * UI;
-            tie_raw = trans(i).tcross_abs(k) - t_ideal;
-
-            if ~has_event(n_ui)
-                has_event(n_ui) = true;
-                event_value(n_ui) = tie_raw;
-            else
-                event_value(n_ui) = 0.5 * (event_value(n_ui) + tie_raw);
+    if ~isempty(all_evt.tcross_abs)
+        tie_sum = zeros(N_UI, 1);
+        tie_cnt = zeros(N_UI, 1);
+        for k = 1:numel(all_evt.tcross_abs)
+            n_ui = all_evt.ui_index_global(k);
+            if n_ui < 1 || n_ui > N_UI
+                continue;
             end
+            n0 = n_ui - 1;
+            t_ideal = t0 + n0 * UI;
+            tie_raw = all_evt.tcross_abs(k) - t_ideal;
+            tie_sum(n_ui) = tie_sum(n_ui) + tie_raw;
+            tie_cnt(n_ui) = tie_cnt(n_ui) + 1;
         end
+        idx_evt = find(tie_cnt > 0);
+        has_event(idx_evt) = true;
+        event_value(idx_evt) = tie_sum(idx_evt) ./ tie_cnt(idx_evt);
     end
 
     for n = 2:N_UI
@@ -156,7 +170,6 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
             trans(i).tcross_cru_abs(k) = trans(i).tcross_abs(k) - tie_LF_ui(n_ui);
         end
     end
-
     % Step 8: reference transition and Tpat_est
     ref_i = choose_ref_transition(trans, cfg.ref_transition, use_repeat_start);
 
@@ -218,6 +231,8 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
 
     out.trans_def = trans_def;
     out.trans = trans;
+    out.all_crossings = all_evt;
+    out.all_crossings_count = numel(all_evt.tcross_abs);
     out.UI = UI;
     out.t0 = t0;
     out.alpha = alpha;
@@ -391,6 +406,37 @@ function thr_type = choose_thr_type_by_levels(a, b)
             thr_type = 'th23';
         end
     end
+end
+
+
+function all_evt = collect_all_crossing_events(t, v, M, th01, th12, th23, ui_start)
+    thresholds = [th01, th12, th23];
+    tc = [];
+    ui = [];
+
+    for k = 1:(numel(v)-1)
+        ui_k = floor((k - 1) / M) + 1;
+        if ui_k < ui_start
+            continue;
+        end
+        v0 = v(k);
+        v1 = v(k+1);
+        dv = v1 - v0;
+        if dv == 0
+            continue;
+        end
+        for ith = 1:3
+            th = thresholds(ith);
+            is_cross = (v0 < th && v1 >= th) || (v0 > th && v1 <= th);
+            if is_cross
+                tcross = t(k) + (th - v0) * (t(k+1) - t(k)) / dv;
+                tc(end+1,1) = tcross; %#ok<AGROW>
+                ui(end+1,1) = ui_k; %#ok<AGROW>
+            end
+        end
+    end
+
+    all_evt = struct('tcross_abs', tc, 'ui_index_global', ui);
 end
 
 function th = get_threshold(thr_type, th01, th12, th23)
