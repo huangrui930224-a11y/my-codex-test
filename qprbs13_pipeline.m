@@ -35,6 +35,7 @@ function out = qprbs13_pipeline(cfg)
     out.sym_cycle = sym.sym_cycle;
     out.levels = sym.levels;
     out.cluster = sym.cluster;
+    out.selected_phase_index = sym.cluster.selected_phase_index;
     out.V = sym.V;
     out.ES1 = sym.ES1;
     out.ES2 = sym.ES2;
@@ -121,8 +122,8 @@ function cfg = normalize_cfg(cfg)
     validateattributes(cfg.minRunLen, {'numeric'}, {'real','finite','integer','>=',1,'scalar'});
     validateattributes(cfg.fixedSampleIndex, {'numeric'}, {'real','finite','integer','>=',1,'<=',cfg.M,'scalar'});
 
-    if ~(strcmp(cfg.uiSampleMethod, 'center') || strcmp(cfg.uiSampleMethod, 'mean'))
-        error('cfg.uiSampleMethod must be ''center'' or ''mean''.');
+    if ~(strcmp(cfg.uiSampleMethod, 'center') || strcmp(cfg.uiSampleMethod, 'mean') || strcmp(cfg.uiSampleMethod, 'proxy_opt'))
+        error('cfg.uiSampleMethod must be ''center'', ''mean'' or ''proxy_opt''.');
     end
     if ~(strcmp(cfg.clusterMethod, 'kmeans') || strcmp(cfg.clusterMethod, 'gmm'))
         error('cfg.clusterMethod must be ''kmeans'' or ''gmm''.');

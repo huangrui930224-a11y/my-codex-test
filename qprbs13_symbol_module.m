@@ -34,30 +34,21 @@ end
 function [s, symCode, symCycle, levels, clusterInfo, counts] = infer_symbols_from_Y(Y, cfg)
     M = size(Y, 1);
 
-    switch lower(char(cfg.uiSampleMethod))
+    uiMethod = lower(char(cfg.uiSampleMethod));
+    switch uiMethod
         case 'center'
             m0 = round(M/2);
             s = double(Y(m0, :).');
         case 'mean'
+            m0 = NaN;
             s = double(mean(Y, 1).');
+        case 'proxy_opt'
+            [m0, s] = select_phase_by_proxy(Y, cfg);
         otherwise
-            error('Unsupported cfg.uiSampleMethod. Use ''center'' or ''mean''.');
+            error('Unsupported cfg.uiSampleMethod. Use ''center'', ''mean'', or ''proxy_opt''.');
     end
 
-    switch lower(char(cfg.clusterMethod))
-        case 'kmeans'
-            [idx, centers] = kmeans(s, 4, 'Replicates', 10, 'MaxIter', 200);
-            centers = centers(:);
-        case 'gmm'
-            gm = fitgmdist(s, 4, ...
-                'RegularizationValue', 1e-6, ...
-                'Replicates', 5, ...
-                'Options', statset('MaxIter', 500));
-            idx = cluster(gm, s);
-            centers = gm.mu(:);
-        otherwise
-            error('Unsupported cfg.clusterMethod. Use ''kmeans'' or ''gmm''.');
-    end
+    [idx, centers] = cluster_4(s, cfg);
 
     [centSorted, ord] = sort(double(centers), 'ascend');
     mapOldClassToCode = zeros(4,1);
@@ -79,6 +70,58 @@ function [s, symCode, symCycle, levels, clusterInfo, counts] = infer_symbols_fro
     clusterInfo.method = lower(char(cfg.clusterMethod));
     clusterInfo.centers_sorted = centSorted;
     clusterInfo.idx_raw = idx;
+    clusterInfo.ui_sample_method = uiMethod;
+    clusterInfo.selected_phase_index = m0;
+end
+
+function [idx, centers] = cluster_4(s, cfg)
+    switch lower(char(cfg.clusterMethod))
+        case 'kmeans'
+            [idx, centers] = kmeans(s, 4, 'Replicates', 10, 'MaxIter', 200);
+            centers = centers(:);
+        case 'gmm'
+            gm = fitgmdist(s, 4, ...
+                'RegularizationValue', 1e-6, ...
+                'Replicates', 5, ...
+                'Options', statset('MaxIter', 500));
+            idx = cluster(gm, s);
+            centers = gm.mu(:);
+        otherwise
+            error('Unsupported cfg.clusterMethod. Use ''kmeans'' or ''gmm''.');
+    end
+end
+
+function [mBest, sBest] = select_phase_by_proxy(Y, cfg)
+% Proxy-optimal phase (method 3): maximize class-separation / within-class spread.
+    M = size(Y, 1);
+    bestScore = -inf;
+    mBest = 1;
+    sBest = double(Y(1,:).');
+
+    for m = 1:M
+        s = double(Y(m,:).');
+        [idx, centers] = cluster_4(s, cfg);
+        c = sort(double(centers(:)), 'ascend');
+        sep = min(diff(c));
+
+        w = zeros(4,1);
+        for k = 1:4
+            vals = s(idx == k);
+            if numel(vals) < 2
+                w(k) = 0;
+            else
+                w(k) = std(vals, 0);
+            end
+        end
+        within = mean(w);
+        score = sep / (within + eps);
+
+        if score > bestScore
+            bestScore = score;
+            mBest = m;
+            sBest = s;
+        end
+    end
 end
 
 function [V, ES1, ES2, RLM, x] = compute_es_and_x(s, symCode)

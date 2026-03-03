@@ -30,6 +30,7 @@ MATLAB QPRBS13/PAM4 分析工具集合。当前仓库提供从 CSV 波形到符�
 ### 符号与建模分析模块
 - `qprbs13_symbol_module.m`
   - 从 `Y` 提取 `s(n)`，聚类得到 `sym_code`，并计算 `ES1/ES2/RLM`、生成 `x(n)`。
+  - 支持 `uiSampleMethod='proxy_opt'`：按“类间距最大/类内方差最小”代理指标自动选择最佳固定采样相位。
 - `qprbs13_rotate_x_module.m`
   - 对 `x(n)` 按 `Dp` 旋转得到 `xr`，并构造 `X`（循环结构矩阵）。
 - `qprbs13_linear_fit_module.m`
