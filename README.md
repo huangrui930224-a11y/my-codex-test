@@ -30,7 +30,8 @@ MATLAB QPRBS13/PAM4 分析工具集合。仓库提供从 CSV 波形到符号推�
 - 关键步骤：
   - 读取 CSV（支持有表头 `t,vdiff` 和无表头前两列）
   - 数据清洗（有限值过滤、时间排序去重）
-  - 起点确定（默认首个 crossing；可切回局部扫描）
+  - 起点确定（默认首个“符号跳变的过阈值 crossing”；可切回局部扫描）
+  - 可选 `cfg.crossingThreshold` 指定固定阈值 crossing（覆盖自动阈值）
   - `numCycles` 周期重采样与平均
 - 主要输出：`t0_best`, `y_avg`, `Y`, `Ts`, `Tpat`。
 - pipeline 输出文件新增：`y(k).csv`（重采样序列）和 `Y.csv`/`Y.mat`（矩阵 `Y`）。

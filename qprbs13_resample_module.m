@@ -102,7 +102,7 @@ function [t0Candidates, J, t0Best, const] = scan_t0(t, vdiff, cfg)
     end
 
     if useFirstCrossing
-        t0Cross = find_first_crossing_time(t, vdiff);
+        t0Cross = find_first_crossing_time(t, vdiff, cfg);
         t0Candidates = double(t0Cross);
         J = 0;
     else
@@ -166,24 +166,80 @@ function [t0Candidates, J, t0Best, const] = scan_t0(t, vdiff, cfg)
 end
 
 
-function tCross = find_first_crossing_time(t, v)
+function tCross = find_first_crossing_time(t, v, cfg)
+% Find the first transition crossing using adaptive threshold (not fixed zero).
+% Steps:
+%   1) Quantize waveform into 4 amplitude levels by kmeans.
+%   2) Find first adjacent samples whose level code changes.
+%   3) Use threshold = midpoint between the two involved level centers.
+%   4) Interpolate crossing time where waveform crosses that threshold.
     t = double(t(:));
     v = double(v(:));
 
-    iZero = find(v == 0, 1, 'first');
-    if ~isempty(iZero)
-        tCross = t(iZero);
+    if numel(t) ~= numel(v) || numel(t) < 2
+        error('t and v must have same length and at least 2 points.');
+    end
+
+    % Optional override for fixed threshold crossing.
+    useFixedThreshold = isfield(cfg, 'crossingThreshold') && ~isempty(cfg.crossingThreshold);
+    if useFixedThreshold
+        thr = double(cfg.crossingThreshold);
+        validateattributes(thr, {'numeric'}, {'real','finite','scalar'});
+        idx = find((v(1:end-1) - thr) .* (v(2:end) - thr) <= 0, 1, 'first');
+        if isempty(idx)
+            error('No crossing found for cfg.crossingThreshold=%g.', thr);
+        end
+        tCross = interpolate_crossing(t(idx), t(idx+1), v(idx), v(idx+1), thr);
         return;
     end
 
-    idx = find(v(1:end-1) .* v(2:end) < 0, 1, 'first');
-    if isempty(idx)
-        error('No crossing found in waveform. Cannot set start point to first crossing time.');
+    try
+        [idxRaw, centersRaw] = kmeans(v, 4, 'Replicates', 5, 'MaxIter', 200);
+    catch
+        % Fallback for environments lacking Statistics Toolbox.
+        idxRaw = discretize(v, quantile(v, [0 0.25 0.5 0.75 1]));
+        centersRaw = accumarray(max(1,min(4,idxRaw(~isnan(idxRaw)))), v(~isnan(idxRaw)), [4,1], @mean, mean(v));
+        idxRaw(isnan(idxRaw)) = 1;
     end
 
-    t1 = t(idx); t2 = t(idx+1);
-    v1 = v(idx); v2 = v(idx+1);
-    tCross = t1 + (0 - v1) * (t2 - t1) / (v2 - v1);
+    [centersSorted, ord] = sort(double(centersRaw(:)), 'ascend');
+    mapOldToNew = zeros(numel(ord), 1);
+    for k = 1:numel(ord)
+        mapOldToNew(ord(k)) = k;
+    end
+    idxLevel = mapOldToNew(idxRaw);
+
+    idx = find(idxLevel(1:end-1) ~= idxLevel(2:end), 1, 'first');
+    if isempty(idx)
+        % Last fallback: use midpoint between global min/max and find first crossing.
+        thr = (min(v) + max(v)) / 2;
+        idx = find((v(1:end-1) - thr) .* (v(2:end) - thr) <= 0, 1, 'first');
+        if isempty(idx)
+            error('No symbol transition crossing found in waveform.');
+        end
+    else
+        c1 = centersSorted(idxLevel(idx));
+        c2 = centersSorted(idxLevel(idx+1));
+        thr = (c1 + c2) / 2;
+    end
+
+    tCross = interpolate_crossing(t(idx), t(idx+1), v(idx), v(idx+1), thr);
+end
+
+function tc = interpolate_crossing(t1, t2, v1, v2, thr)
+    if v1 == thr
+        tc = t1;
+        return;
+    end
+    if v2 == thr
+        tc = t2;
+        return;
+    end
+    if v2 == v1
+        tc = (t1 + t2) / 2;
+        return;
+    end
+    tc = t1 + (thr - v1) * (t2 - t1) / (v2 - v1);
 end
 
 function [yCycles, yAvg, Y] = resample_with_t0(t, vdiff, t0Best, const, numCycles)
