@@ -33,6 +33,7 @@ MATLAB QPRBS13/PAM4 分析工具集合。仓库提供从 CSV 波形到符号推�
   - 起点确定（默认首个 crossing；可切回局部扫描）
   - `numCycles` 周期重采样与平均
 - 主要输出：`t0_best`, `y_avg`, `Y`, `Ts`, `Tpat`。
+- pipeline 输出文件新增：`y(k).csv`（重采样序列）和 `Y.csv`/`Y.mat`（矩阵 `Y`）。
 
 ### `qprbs13_symbol_module.m`
 - 功能：从 `Y` 中提取每 UI 的代表电压并反推 PAM4 符号。

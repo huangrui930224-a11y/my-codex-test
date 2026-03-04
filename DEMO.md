@@ -64,6 +64,9 @@ fprintf('ES1 = %.6f, ES2 = %.6f, RLM = %.6f\n', out.ES1, out.ES2, out.RLM);
 
 - `resample_out.mat`
 - `y_avg.csv`
+- `y(k).csv`
+- `Y.csv`
+- `Y.mat`
 - `symbol_means.csv`
 - `s_x_symbols.csv`
 - `symbol_voltage_samples.csv`
@@ -118,6 +121,7 @@ fprintf('Y size = [%d, %d]\n', size(out.Y,1), size(out.Y,2));
 
 - `y_avg.mat`
 - `Y.mat`
+- `Y.csv`
 - `y_avg.csv`
 - `J_scan.png`
 - `overlay_cycles.png`

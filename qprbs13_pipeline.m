@@ -166,6 +166,11 @@ function write_outputs(out, outputDir)
     y = out.y_avg;
     T_y = table(k, ui_index, sample_in_ui, y);
     writetable(T_y, fullfile(outputDir, 'y_avg.csv'));
+    writetable(T_y, fullfile(outputDir, 'y(k).csv'));
+
+    Y = out.Y;
+    writematrix(Y, fullfile(outputDir, 'Y.csv'));
+    save(fullfile(outputDir, 'Y.mat'), 'Y');
 
     symbol_code = (0:3).';
     symbol_value = out.levels;
