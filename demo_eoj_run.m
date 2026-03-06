@@ -44,6 +44,7 @@ fprintf('EOJ_i(ps):\n');
 disp(out.EOJ_i_ps);
 fprintf('ref transition index: %d\n', out.ref_transition);
 fprintf('Tpat_est : %.6f ns\n', out.Tpat_est * 1e9);
+fprintf('repeat pair used: [%d, %d]\n', out.repeat_pair_used(1), out.repeat_pair_used(2));
 
 fprintf('symbol_mean_voltage [V0 V1 V2 V3] (V):\n');
 disp(out.symbol_mean_voltage);

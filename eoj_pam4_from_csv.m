@@ -181,16 +181,13 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         end
     end
     % Step 8: reference transition and Tpat_est
-    ref_i = choose_ref_transition(trans, cfg.ref_transition, use_repeat_start);
-
-    rep0 = use_repeat_start;
-    rep1 = use_repeat_start + 1;
+    [ref_i, rep0, rep1] = choose_ref_transition_and_repeats(trans, cfg.ref_transition, use_repeat_start, cfg.verbose);
 
     T3 = mean_or_nan(trans(ref_i).tcross_cru_abs(trans(ref_i).repeat_id == rep0));
     T4 = mean_or_nan(trans(ref_i).tcross_cru_abs(trans(ref_i).repeat_id == rep1));
 
     if isnan(T3) || isnan(T4)
-        error('Reference transition has no valid data in repeat0/repeat1 after discard.');
+        error('Reference transition has no valid data in selected adjacent repeats.');
     end
     Tpat_est = T4 - T3;
 
@@ -232,6 +229,7 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     out.T3 = T3;
     out.T4 = T4;
     out.Tpat_est = Tpat_est;
+    out.repeat_pair_used = [rep0, rep1];
 
     out.V0 = V0; out.V1 = V1; out.V2 = V2; out.V3 = V3;
     out.symbol_mean_voltage = [V0, V1, V2, V3];
@@ -547,14 +545,33 @@ function [tcross, kcross, n_cross] = find_first_crossing(t, v, k0, k1, th, dir)
     kcross = k;
 end
 
-function ref_i = choose_ref_transition(trans, ref_cfg, rep0)
+function [ref_i, rep0, rep1] = choose_ref_transition_and_repeats(trans, ref_cfg, rep_start, verbose)
+    % First try protocol-intended pair: repeat0/repeat1 after discard.
+    rep0 = rep_start;
+    rep1 = rep_start + 1;
+
     if ~isempty(ref_cfg)
         ref_i = ref_cfg;
-        return;
+        if any(trans(ref_i).repeat_id == rep0) && any(trans(ref_i).repeat_id == rep1)
+            return;
+        end
+
+        % If user-specified ref missing on (rep0,rep1), keep ref_i but search
+        % first adjacent repeat pair where this reference exists.
+        [rep0, rep1, ok] = find_adjacent_pair_for_transition(trans(ref_i).repeat_id, rep_start);
+        if ok
+            if verbose
+                warning('ref_transition=%d missing in repeat%d/repeat%d; fallback to repeat%d/repeat%d.', ...
+                    ref_i, rep_start, rep_start+1, rep0, rep1);
+            end
+            return;
+        end
+        error('Specified ref_transition=%d has no valid adjacent repeat pair.', ref_i);
     end
+
+    % Auto-ref selection: best transition on default pair first.
     best = -1;
     ref_i = 1;
-    rep1 = rep0 + 1;
     for i = 1:numel(trans)
         c0 = sum(trans(i).repeat_id == rep0);
         c1 = sum(trans(i).repeat_id == rep1);
@@ -566,8 +583,76 @@ function ref_i = choose_ref_transition(trans, ref_cfg, rep0)
             end
         end
     end
-    if best < 0
-        error('No valid transition can be used as reference in repeat0/repeat1.');
+    if best >= 0
+        return;
+    end
+
+    % Robust fallback: search any adjacent repeat pair and transition.
+    best = -1;
+    found = false;
+    for i = 1:numel(trans)
+        [r0, r1, ok, score] = best_adjacent_pair_score(trans(i).repeat_id, rep_start);
+        if ok && score > best
+            best = score;
+            ref_i = i;
+            rep0 = r0;
+            rep1 = r1;
+            found = true;
+        end
+    end
+
+    if ~found
+        error('No valid transition can be used as reference in any adjacent repeat pair.');
+    end
+
+    if verbose
+        warning('No ref transition in repeat%d/repeat%d. Fallback to repeat%d/repeat%d with transition %d.', ...
+            rep_start, rep_start+1, rep0, rep1, ref_i);
+    end
+end
+
+function [rep0, rep1, ok] = find_adjacent_pair_for_transition(repeat_ids, rep_start)
+    rep0 = rep_start;
+    rep1 = rep_start + 1;
+    ok = false;
+    if isempty(repeat_ids)
+        return;
+    end
+    u = unique(repeat_ids(:)).';
+    u = u(u >= rep_start);
+    for k = 1:(numel(u)-1)
+        if u(k+1) == u(k) + 1
+            rep0 = u(k);
+            rep1 = u(k+1);
+            ok = true;
+            return;
+        end
+    end
+end
+
+function [rep0, rep1, ok, score] = best_adjacent_pair_score(repeat_ids, rep_start)
+    rep0 = rep_start;
+    rep1 = rep_start + 1;
+    ok = false;
+    score = -inf;
+    if isempty(repeat_ids)
+        return;
+    end
+
+    u = unique(repeat_ids(:)).';
+    u = u(u >= rep_start);
+    for k = 1:(numel(u)-1)
+        if u(k+1) == u(k) + 1
+            c0 = sum(repeat_ids == u(k));
+            c1 = sum(repeat_ids == u(k+1));
+            sc = c0 + c1;
+            if sc > score
+                score = sc;
+                rep0 = u(k);
+                rep1 = u(k+1);
+                ok = true;
+            end
+        end
     end
 end
 
