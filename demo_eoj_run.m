@@ -67,3 +67,6 @@ fprintf('th01 crossing time head (s):\n'); disp(out.all_crossing_threshold_times
 
 fprintf('csv exported files:\n');
 disp(out.csv_export_files);
+if isfield(out.csv_export_files, 'detected_transition_csv')
+    fprintf('detected transition csv: %s\n', out.csv_export_files.detected_transition_csv);
+end

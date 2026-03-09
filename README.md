@@ -178,3 +178,10 @@
 ### 3) 如何提高稳定性？
 
 优先提供准确的 `cfg.trans_def`，并根据数据建立过程设置 `discard_first_repeats`。
+
+
+### 4) 为什么 `symbol_trace` 看起来都有12类，但仍出现 missing?
+
+`*_symbol_trace.csv` 中的 `is_aaaabb_transition_pos` 是**按 trans_def 窗口的期望位置标注**，不代表该位置一定检测到 crossing。
+
+请以 `*_detected_transition_crossings.csv` 为准查看**实际检测到**的每条 transition crossing（含 repeat、UI、tcross_abs/tcross_cru_abs）。

@@ -772,6 +772,7 @@ function files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI)
     repeat_id = floor((ui_global - 1) / cfg.Npat);
     ui_in_repeat = mod(ui_global - 1, cfg.Npat) + 1;
 
+    % expected position markers from transition definitions
     mark = false(N_UI,1);
     label = repmat({''}, N_UI, 1);
     for i = 1:numel(out.trans_def)
@@ -788,13 +789,33 @@ function files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI)
         end
     end
 
+    % actual detected crossing markers from extracted transition events
+    det_mark = false(N_UI,1);
+    det_label = repmat({''}, N_UI, 1);
+    for i = 1:numel(out.trans)
+        ui_evt = out.trans(i).ui_index_global(:);
+        for jj = 1:numel(ui_evt)
+            ug = ui_evt(jj);
+            if ug < 1 || ug > N_UI
+                continue;
+            end
+            det_mark(ug) = true;
+            if isempty(det_label{ug})
+                det_label{ug} = out.trans(i).name;
+            else
+                det_label{ug} = [det_label{ug}, '|', out.trans(i).name]; %#ok<AGROW>
+            end
+        end
+    end
+
     T_sym = table(ui_global, repeat_id, ui_in_repeat, out.symbol_inferred(:), ...
         repmat(out.symbol_sample.phase_index, N_UI, 1), ...
         repmat(out.symbol_sample.phase_time_offset_s, N_UI, 1), ...
-        out.symbol_sample.voltage(:), mark, string(label), ...
+        out.symbol_sample.voltage(:), mark, string(label), det_mark, string(det_label), ...
         'VariableNames', {'ui_global','repeat_id','ui_in_repeat','symbol', ...
         'sample_phase_index','sample_phase_offset_s','sample_voltage_V', ...
-        'is_aaaabb_transition_pos','aaaabb_transition_name'});
+        'is_aaaabb_transition_pos','aaaabb_transition_name', ...
+        'is_detected_transition_pos','detected_transition_name'});
 
     sym_csv = fullfile(cfg.export_dir, [stem, '_symbol_trace.csv']);
     writetable(T_sym, sym_csv);
@@ -819,7 +840,37 @@ function files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI)
     def_csv = fullfile(cfg.export_dir, [stem, '_aaaabb_transitions.csv']);
     writetable(T_def, def_csv);
 
-    % 3) All crossing threshold times CSV
+    % 3) Actual detected transition crossings CSV (per event)
+    rows = 0;
+    for i = 1:numel(out.trans)
+        rows = rows + numel(out.trans(i).tcross_abs);
+    end
+    tr_idx = zeros(rows,1);
+    tr_name = strings(rows,1);
+    rep_id = zeros(rows,1);
+    ui_evt = zeros(rows,1);
+    tc_abs = nan(rows,1);
+    tc_cru = nan(rows,1);
+    ridx = 0;
+    for i = 1:numel(out.trans)
+        n = numel(out.trans(i).tcross_abs);
+        if n == 0, continue; end
+        rr = (ridx+1):(ridx+n);
+        tr_idx(rr) = i;
+        tr_name(rr) = string(out.trans(i).name);
+        rep_id(rr) = out.trans(i).repeat_id(:);
+        ui_evt(rr) = out.trans(i).ui_index_global(:);
+        tc_abs(rr) = out.trans(i).tcross_abs(:);
+        tc_cru(rr) = out.trans(i).tcross_cru_abs(:);
+        ridx = ridx + n;
+    end
+    T_det = table(tr_idx, tr_name, rep_id, ui_evt, tc_abs, tc_cru, ...
+        'VariableNames', {'transition_index','transition_name','repeat_id', ...
+        'ui_index_global','tcross_abs_s','tcross_cru_abs_s'});
+    det_csv = fullfile(cfg.export_dir, [stem, '_detected_transition_crossings.csv']);
+    writetable(T_det, det_csv);
+
+    % 4) All crossing threshold times CSV
     th_name = strings(numel(out.all_crossings.th_id),1);
     for k = 1:numel(th_name)
         if out.all_crossings.th_id(k) == 1
@@ -838,6 +889,7 @@ function files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI)
 
     files = struct('symbol_trace_csv', sym_csv, ...
         'aaaabb_transition_csv', def_csv, ...
+        'detected_transition_csv', det_csv, ...
         'crossing_csv', cross_csv);
 end
 
