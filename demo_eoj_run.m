@@ -16,6 +16,7 @@ cfg.do_plot = true;
 cfg.verbose = true;
 cfg.export_csv = true;
 cfg.export_dir = '.';
+cfg.auto_window_half_width_ui = 2; % widen auto AAAABB window to reduce missing
 
 % Recommended: user-provided transition windows (stable and protocol-driven)
 % Example template only (replace begin_ui/end_ui with your known windows).

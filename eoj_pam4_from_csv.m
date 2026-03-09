@@ -72,12 +72,12 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     % Build or infer transition definitions (12 classes)
     if isfield(cfg, 'trans_def') && ~isempty(cfg.trans_def)
         trans_def = cfg.trans_def;
-        infer_info = struct('used', false, 'offset_ui', 0, 'coverage', nan, 'hit_count', nan);
+        infer_info = struct('used', false, 'offset_ui', 0, 'coverage', nan, 'hit_count', nan, 'half_window_ui', cfg.auto_window_half_width_ui);
     else
         if cfg.verbose
             fprintf('[EOJ] cfg.trans_def not provided, infer transition windows from symbol stream with AAAABB assumption.\n');
         end
-        [trans_def, infer_info] = infer_transitions_from_symbols(sym, cfg.Npat);
+        [trans_def, infer_info] = infer_transitions_from_symbols(sym, cfg.Npat, cfg.auto_window_half_width_ui);
     end
 
     if numel(trans_def) ~= 12
@@ -201,7 +201,7 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         T1(i) = mean_or_nan(trans(i).tcross_cru_abs(trans(i).repeat_id == rep0));
         T2(i) = mean_or_nan(trans(i).tcross_cru_abs(trans(i).repeat_id == rep1));
         if isnan(T1(i)) || isnan(T2(i))
-            warning('Transition %d (%s) missing in repeat0/1. EOJ_i set to NaN.', i, trans(i).name);
+            warning('Transition %d (%s) missing in repeat%d/repeat%d. EOJ_i set to NaN.', i, trans(i).name, rep0, rep1);
             EOJ_i(i) = nan;
         else
             EOJ_i(i) = abs((T2(i) - T1(i)) - Tpat_est);
@@ -284,8 +284,8 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         fprintf('[EOJ] Sampling phase m_used=%d (m_opt=%d, m_center=%d, phase_valid=%d)\n', ...
             out.phase_search.m_used, out.phase_search.m_opt, out.phase_search.m_center, out.phase_search.valid);
         if out.infer_info.used
-            fprintf('[EOJ] AAAABB infer offset=%d UI, coverage=%d/12, hits=%d\n', ...
-                out.infer_info.offset_ui, out.infer_info.coverage, out.infer_info.hit_count);
+            fprintf('[EOJ] AAAABB infer offset=%d UI, coverage=%d/12, hits=%d, half_window=%d UI\n', ...
+                out.infer_info.offset_ui, out.infer_info.coverage, out.infer_info.hit_count, out.infer_info.half_window_ui);
         end
     end
 end
@@ -303,6 +303,9 @@ function cfg = apply_defaults(cfg)
     if ~isfield(cfg, 'verbose') || isempty(cfg.verbose), cfg.verbose = true; end
     if ~isfield(cfg, 'export_csv') || isempty(cfg.export_csv), cfg.export_csv = false; end
     if ~isfield(cfg, 'export_dir') || isempty(cfg.export_dir), cfg.export_dir = '.'; end
+    if ~isfield(cfg, 'auto_window_half_width_ui') || isempty(cfg.auto_window_half_width_ui)
+        cfg.auto_window_half_width_ui = 1;
+    end
 end
 
 function [t, v] = read_csv_two_cols(csv_file)
@@ -403,7 +406,7 @@ function [labels, centers] = simple_kmeans_1d(x, K, max_iter)
     centers = centers_sorted(:).';
 end
 
-function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat)
+function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat, half_w)
     % Automatic fallback when cfg.trans_def is missing.
     %
     % IMPORTANT AAAABB classification rule used here:
@@ -420,6 +423,7 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat)
     if numel(sym) < Npat + 2
         error('Not enough UI symbols to infer AAAABB transitions.');
     end
+    half_w = max(0, round(half_w));
 
     max_off = min(Npat - 1, numel(sym) - Npat);
     best_cov = -1;
@@ -466,7 +470,7 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat)
 
     class_pos = best_class_pos;
     infer_info = struct('used', true, 'offset_ui', best_off, ...
-        'coverage', best_cov, 'hit_count', best_hits);
+        'coverage', best_cov, 'hit_count', best_hits, 'half_window_ui', half_w);
 
 % Build all 12 directed classes explicitly, each class picks one
     % representative window (first AAAABB hit in repeat0).
@@ -494,8 +498,9 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat)
                 trans_def(idx).begin_ui = 1;
                 trans_def(idx).end_ui = Npat;
             else
-                trans_def(idx).begin_ui = pos(1);
-                trans_def(idx).end_ui = pos(1);
+                p0 = pos(1);
+                trans_def(idx).begin_ui = max(1, p0 - half_w);
+                trans_def(idx).end_ui = min(Npat, p0 + half_w);
             end
         end
     end

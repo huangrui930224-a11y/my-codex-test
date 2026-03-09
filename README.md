@@ -185,3 +185,10 @@
 `*_symbol_trace.csv` 中的 `is_aaaabb_transition_pos` 是**按 trans_def 窗口的期望位置标注**，不代表该位置一定检测到 crossing。
 
 请以 `*_detected_transition_crossings.csv` 为准查看**实际检测到**的每条 transition crossing（含 repeat、UI、tcross_abs/tcross_cru_abs）。
+
+
+### 5) 自动 AAAABB 有 missing 如何优化
+
+可增大 `cfg.auto_window_half_width_ui`（默认 1），自动推断时会把每类的 `begin_ui/end_ui` 从单点扩展为 `pos(1)±half_window`，提高 crossing 命中概率。
+
+并结合 `*_detected_transition_crossings.csv` 检查每类在 `repeat_pair_used` 中是否都检测到事件。
