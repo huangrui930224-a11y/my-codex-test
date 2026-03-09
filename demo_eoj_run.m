@@ -54,3 +54,11 @@ disp([out.th01, out.th12, out.th23]);
 fprintf('sampling phase: m_used=%d, m_opt=%d, m_center=%d, valid=%d\n', ...
     out.phase_search.m_used, out.phase_search.m_opt, out.phase_search.m_center, out.phase_search.valid);
 fprintf('phase score (first 16):\n'); disp(out.phase_search.score(1:min(16,end)));
+
+fprintf('Vui size: %d x %d\n', size(out.Vui,1), size(out.Vui,2));
+fprintf('symbol phase index used: %d\n', out.symbol_sample.phase_index);
+fprintf('symbol sample voltage head (first 10):\n'); disp(out.symbol_sample.voltage(1:min(10,end)).');
+fprintf('inferred symbol head (first 32):\n'); disp(out.symbol_inferred(1:min(32,end)).');
+fprintf('all crossing threshold times count: th01=%d, th12=%d, th23=%d\n', ...
+    numel(out.all_crossing_threshold_times.th01), numel(out.all_crossing_threshold_times.th12), numel(out.all_crossing_threshold_times.th23));
+fprintf('th01 crossing time head (s):\n'); disp(out.all_crossing_threshold_times.th01(1:min(10,end)).');

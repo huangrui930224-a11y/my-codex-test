@@ -247,6 +247,18 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     out.phase_search = struct('m_opt', m_opt, 'm_center', m_center, 'm_used', m, ...
         'valid', phase_valid, 'score', phase_score);
 
+    % Additional debug/trace outputs requested
+    out.Vui = Vui;
+    out.symbol_inferred = sym;
+    out.symbol_sample = struct('phase_index', m, 'phase_time_offset_s', (m-1)*(UI/cfg.M), ...
+        'voltage', y);
+
+    % All crossing times grouped by threshold
+    out.all_crossing_threshold_times = struct( ...
+        'th01', all_evt.tcross_abs(all_evt.th_id == 1), ...
+        'th12', all_evt.tcross_abs(all_evt.th_id == 2), ...
+        'th23', all_evt.tcross_abs(all_evt.th_id == 3));
+
     % Step 11: plots
     if cfg.do_plot
         make_plots(y, [V0 V1 V2 V3], [th01 th12 th23], out, trans, rep0, rep1);
@@ -475,6 +487,8 @@ function all_evt = collect_all_crossing_events(t, v, M, th01, th12, th23, ui_sta
     thresholds = [th01, th12, th23];
     tc = [];
     ui = [];
+    th_id = [];
+    th_val = [];
 
     for k = 1:(numel(v)-1)
         ui_k = floor((k - 1) / M) + 1;
@@ -494,11 +508,14 @@ function all_evt = collect_all_crossing_events(t, v, M, th01, th12, th23, ui_sta
                 tcross = t(k) + (th - v0) * (t(k+1) - t(k)) / dv;
                 tc(end+1,1) = tcross; %#ok<AGROW>
                 ui(end+1,1) = ui_k; %#ok<AGROW>
+                th_id(end+1,1) = ith; %#ok<AGROW>
+                th_val(end+1,1) = th; %#ok<AGROW>
             end
         end
     end
 
-    all_evt = struct('tcross_abs', tc, 'ui_index_global', ui);
+    all_evt = struct('tcross_abs', tc, 'ui_index_global', ui, ...
+        'th_id', th_id, 'th_value', th_val);
 end
 
 function th = get_threshold(thr_type, th01, th12, th23)
