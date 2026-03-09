@@ -411,10 +411,18 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat, hal
     %
     % IMPORTANT AAAABB classification rule used here:
     % For a transition A->B at boundary n->n+1, we only accept it as a
-    % candidate class event when local context is exactly:
-    %   sym(n-3:n)   = [A A A A]
-    %   sym(n+1:n+2) = [B B]
-    % (i.e., AAAABB with the boundary between 4th A and 1st B).
+    % candidate class event when:
+    %   - A-side consecutive run-length at boundary n is >= 4 UI
+    %   - B-side consecutive run-length at boundary n+1 is >= 2 UI
+    % which is equivalent to requiring the local pattern AAAABB with the
+    % boundary between the 4th A and 1st B.
+    %
+    % Why this can be judged with "3 UI context":
+    % the boundary UI itself already provides 1 UI on each side. Therefore,
+    % checking AAAABB only needs:
+    %   - 3 additional UI on the left of boundary (to reach 4A total)
+    %   - 1 additional UI on the right of boundary (to reach 2B total)
+    % implemented below by run-lengths, which is robust to longer runs too.
     %
     % Optimization (Plan B): search pattern start offset first, then run
     % AAAABB detection on the best-aligned pattern window.
@@ -436,14 +444,27 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat, hal
         class_pos = cell(4,4);
         hit_count = 0;
 
+        left_run = ones(1, Npat);
+        for k = 2:Npat
+            if s(k) == s(k-1)
+                left_run(k) = left_run(k-1) + 1;
+            end
+        end
+        right_run = ones(1, Npat);
+        for k = Npat-1:-1:1
+            if s(k) == s(k+1)
+                right_run(k) = right_run(k+1) + 1;
+            end
+        end
+
         for n = 4:(Npat - 2)
             A = s(n);
             B = s(n + 1);
             if A == B
                 continue;
             end
-            left_ok = all(s(n-3:n) == A);
-            right_ok = all(s(n+1:n+2) == B);
+            left_ok = left_run(n) >= 4;
+            right_ok = right_run(n+1) >= 2;
             if left_ok && right_ok
                 class_pos{A+1, B+1}(end+1) = n; %#ok<AGROW>
                 hit_count = hit_count + 1;

@@ -187,6 +187,21 @@
 请以 `*_detected_transition_crossings.csv` 为准查看**实际检测到**的每条 transition crossing（含 repeat、UI、tcross_abs/tcross_cru_abs）。
 
 
+### 4.1) 3个UI如何判断 AAAABB 上下文
+
+以候选边界 `n->n+1`（`A->B`）为例，本工具采用 **run-length** 判据：
+
+- 左侧 `A` 连续长度 `>=4 UI`
+- 右侧 `B` 连续长度 `>=2 UI`
+
+这与 `AAAABB`（边界位于第4个A与第1个B之间）等价。
+
+之所以常说“3个UI上下文”也能判断，是因为边界本身已经贡献了两侧各1个UI：
+- 左侧只需再看前面3个UI，就能确认是否达到4个连续A；
+- 右侧只需再看后面1个UI，就能确认是否达到2个连续B。
+
+实现上使用 run-length 而不是固定切片，优点是当实际序列为 `AAAAA...BBB...` 时同样可稳定命中，不会因为比 `AAAABB` 更长而漏检。
+
 ### 5) 自动 AAAABB 有 missing 如何优化
 
 可增大 `cfg.auto_window_half_width_ui`（默认 1），自动推断时会把每类的 `begin_ui/end_ui` 从单点扩展为 `pos(1)±half_window`，提高 crossing 命中概率。
