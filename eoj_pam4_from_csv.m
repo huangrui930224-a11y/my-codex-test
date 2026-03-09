@@ -65,8 +65,9 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     th12 = (V1 + V2) / 2;
     th23 = (V2 + V3) / 2;
 
-    % Step 5: repeat grouping by nominal Npat*UI
-    t0 = t_uniform(1);
+    % Step 5: time-axis origin anchor uses the first threshold crossing
+    % instead of the first sample time (requested behavior).
+    t0 = find_first_threshold_crossing_time(t_uniform, v_uniform, th01, th12, th23);
 
     % Build or infer transition definitions (12 classes)
     if isfield(cfg, 'trans_def') && ~isempty(cfg.trans_def)
@@ -526,6 +527,36 @@ function thr_type = choose_thr_type_by_levels(a, b)
     end
 end
 
+
+
+function t0 = find_first_threshold_crossing_time(t, v, th01, th12, th23)
+    thresholds = [th01, th12, th23];
+    t0 = t(1);
+
+    for k = 1:(numel(v)-1)
+        v0 = v(k);
+        v1 = v(k+1);
+        dv = v1 - v0;
+        if dv == 0
+            continue;
+        end
+
+        tcands = [];
+        for ith = 1:3
+            th = thresholds(ith);
+            is_cross = (v0 < th && v1 >= th) || (v0 > th && v1 <= th);
+            if is_cross
+                tc = t(k) + (th - v0) * (t(k+1) - t(k)) / dv;
+                tcands(end+1) = tc; %#ok<AGROW>
+            end
+        end
+
+        if ~isempty(tcands)
+            t0 = min(tcands);
+            return;
+        end
+    end
+end
 
 function all_evt = collect_all_crossing_events(t, v, M, th01, th12, th23, ui_start)
     thresholds = [th01, th12, th23];
