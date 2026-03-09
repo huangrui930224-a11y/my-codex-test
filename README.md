@@ -93,7 +93,7 @@
 二选一：
 
 1. **手工模式**：使用 `cfg.trans_def(1..12)`。
-2. **自动模式**：`infer_transitions_from_symbols` 根据 AAAABB 上下文识别 12 类有向 transition。
+2. **自动模式**：`infer_transitions_from_symbols` 先在 `offset=0..Npat-1` 上做 pattern 起点搜索（按 AAAABB 覆盖率与命中数选最优 offset），再基于该对齐窗口识别 12 类有向 transition。
 
 ### Step 6) crossing 提取
 

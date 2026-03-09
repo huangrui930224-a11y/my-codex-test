@@ -71,11 +71,12 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     % Build or infer transition definitions (12 classes)
     if isfield(cfg, 'trans_def') && ~isempty(cfg.trans_def)
         trans_def = cfg.trans_def;
+        infer_info = struct('used', false, 'offset_ui', 0, 'coverage', nan, 'hit_count', nan);
     else
         if cfg.verbose
             fprintf('[EOJ] cfg.trans_def not provided, infer transition windows from symbol stream with AAAABB assumption.\n');
         end
-        trans_def = infer_transitions_from_symbols(sym, cfg.Npat);
+        [trans_def, infer_info] = infer_transitions_from_symbols(sym, cfg.Npat);
     end
 
     if numel(trans_def) ~= 12
@@ -238,6 +239,7 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     out.crossing_threshold = struct('th01', th01, 'th12', th12, 'th23', th23);
 
     out.trans_def = trans_def;
+    out.infer_info = infer_info;
     out.trans = trans;
     out.all_crossings = all_evt;
     out.all_crossings_count = numel(all_evt.tcross_abs);
@@ -280,6 +282,10 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
             out.th01, out.th12, out.th23);
         fprintf('[EOJ] Sampling phase m_used=%d (m_opt=%d, m_center=%d, phase_valid=%d)\n', ...
             out.phase_search.m_used, out.phase_search.m_opt, out.phase_search.m_center, out.phase_search.valid);
+        if out.infer_info.used
+            fprintf('[EOJ] AAAABB infer offset=%d UI, coverage=%d/12, hits=%d\n', ...
+                out.infer_info.offset_ui, out.infer_info.coverage, out.infer_info.hit_count);
+        end
     end
 end
 
@@ -396,7 +402,7 @@ function [labels, centers] = simple_kmeans_1d(x, K, max_iter)
     centers = centers_sorted(:).';
 end
 
-function trans_def = infer_transitions_from_symbols(sym, Npat)
+function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat)
     % Automatic fallback when cfg.trans_def is missing.
     %
     % IMPORTANT AAAABB classification rule used here:
@@ -406,33 +412,62 @@ function trans_def = infer_transitions_from_symbols(sym, Npat)
     %   sym(n+1:n+2) = [B B]
     % (i.e., AAAABB with the boundary between 4th A and 1st B).
     %
-    % This corresponds to "detect AAAABB then classify current transition"
-    % and avoids classifying isolated/noisy transitions without context.
+    % Optimization (Plan B): search pattern start offset first, then run
+    % AAAABB detection on the best-aligned pattern window.
 
     sym = sym(:);
     if numel(sym) < Npat + 2
         error('Not enough UI symbols to infer AAAABB transitions.');
     end
-    % Use first full pattern for robust/specific index extraction.
-    s = sym(1:Npat);
 
-    % Collect all AAAABB-qualified boundaries in one repeat.
-    % boundary UI index n means transition from UI n to n+1.
-    class_pos = cell(4, 4);
-    for n = 4:(Npat - 2)
-        A = s(n);
-        B = s(n + 1);
-        if A == B
-            continue;
+    max_off = min(Npat - 1, numel(sym) - Npat);
+    best_cov = -1;
+    best_hits = -1;
+    best_off = 0;
+    best_class_pos = cell(4,4);
+
+    for off = 0:max_off
+        s = sym(off + 1 : off + Npat);
+        class_pos = cell(4,4);
+        hit_count = 0;
+
+        for n = 4:(Npat - 2)
+            A = s(n);
+            B = s(n + 1);
+            if A == B
+                continue;
+            end
+            left_ok = all(s(n-3:n) == A);
+            right_ok = all(s(n+1:n+2) == B);
+            if left_ok && right_ok
+                class_pos{A+1, B+1}(end+1) = n; %#ok<AGROW>
+                hit_count = hit_count + 1;
+            end
         end
-        left_ok = all(s(n-3:n) == A);
-        right_ok = all(s(n+1:n+2) == B);
-        if left_ok && right_ok
-            class_pos{A+1, B+1}(end+1) = n; %#ok<AGROW>
+
+        cov = 0;
+        for a = 0:3
+            for b = 0:3
+                if a == b, continue; end
+                if ~isempty(class_pos{a+1,b+1})
+                    cov = cov + 1;
+                end
+            end
+        end
+
+        if (cov > best_cov) || (cov == best_cov && hit_count > best_hits)
+            best_cov = cov;
+            best_hits = hit_count;
+            best_off = off;
+            best_class_pos = class_pos;
         end
     end
 
-    % Build all 12 directed classes explicitly, each class picks one
+    class_pos = best_class_pos;
+    infer_info = struct('used', true, 'offset_ui', best_off, ...
+        'coverage', best_cov, 'hit_count', best_hits);
+
+% Build all 12 directed classes explicitly, each class picks one
     % representative window (first AAAABB hit in repeat0).
     trans_def = repmat(struct('name', '', 'begin_ui', 1, 'end_ui', 1, ...
         'thr_type', 'th12', 'dir', 'rise'), 1, 12);
@@ -465,7 +500,7 @@ function trans_def = infer_transitions_from_symbols(sym, Npat)
     end
 
     if ~isempty(missing)
-        warning('AAAABB auto-infer missing classes in repeat0: %s', strjoin(missing, ', '));
+        warning('AAAABB auto-infer missing classes (offset=%d): %s', infer_info.offset_ui, strjoin(missing, ', '));
     end
 end
 
