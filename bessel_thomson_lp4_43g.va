@@ -1,0 +1,87 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+//------------------------------------------------------------------------------
+// 4th-order Bessel-Thomson low-pass (single-ended) for Spectre/Virtuoso
+//
+// Target (default):
+//   -3 dB bandwidth = 43 GHz
+//
+// Mathematical background:
+//   Normalized 4th-order Bessel (Thomson) denominator polynomial:
+//      B4(p) = p^4 + 10 p^3 + 45 p^2 + 105 p + 105
+//   Normalized transfer function:
+//      Hn(p) = 105 / B4(p)
+//   where p = s / w0.
+//
+//   For this normalized prototype, the -3 dB point is NOT at |p|=1.
+//   Solve |Hn(j*k3db)| = 1/sqrt(2), giving:
+//      k3db ~= 2.113917674904215
+//
+//   Therefore, to enforce f3db at the user target:
+//      w3db = 2*pi*f3db
+//      w0   = w3db / k3db
+//
+//   Mapping Hn(s/w0) to s-domain:
+//      H(s) = gain_dc * (105*w0^4)
+//             ---------------------------------------------
+//             s^4 + 10*w0*s^3 + 45*w0^2*s^2 + 105*w0^3*s + 105*w0^4
+//
+// Implementation choice:
+//   Method A (laplace_nd) is used for direct, compact, continuous-time modeling
+//   and good compatibility with AC + transient simulation in Spectre.
+//------------------------------------------------------------------------------
+module bessel_thomson_lp4_43g(vin, vout);
+  inout vin, vout;
+  electrical vin, vout;
+
+  // Required parameters
+  parameter real f3db         = 43e9 from (0:inf); // target -3 dB bandwidth (Hz)
+  parameter real gain_dc      = 1.0;               // DC gain scaling
+  parameter integer enable_ic = 0;                 // optional IC assist enable
+
+  // Optional IC parameter
+  parameter real vout_ic      = 0.0;
+
+  // Optional tiny decay constant used only when enable_ic=1.
+  // Kept very small so it nudges transient start without affecting waveform.
+  parameter real ic_tau       = 1p from (0:inf);
+
+  // Constant: normalized -3 dB angular frequency ratio of Hn(j*k)
+  // for Hn(p)=105/(p^4+10p^3+45p^2+105p+105)
+  real k3db_norm;
+
+  // Runtime coefficients
+  real w3db, w0;
+  real d0, d1, d2, d3, d4;
+  real n0;
+
+  analog begin
+    k3db_norm = 2.113917674904215;
+
+    // Frequency scaling from desired 3 dB frequency to prototype w0
+    w3db = `M_TWO_PI * f3db;
+    w0   = w3db / k3db_norm;
+
+    // Denominator coefficients in ascending powers for laplace_nd:
+    // d0 + d1*s + d2*s^2 + d3*s^3 + d4*s^4
+    // => matches: s^4 + 10*w0*s^3 + 45*w0^2*s^2 + 105*w0^3*s + 105*w0^4
+    d0 = 105.0 * pow(w0,4);
+    d1 = 105.0 * pow(w0,3);
+    d2 = 45.0  * pow(w0,2);
+    d3 = 10.0  * w0;
+    d4 = 1.0;
+
+    // Numerator (constant only), scaled for unity prototype DC gain and gain_dc
+    n0 = gain_dc * 105.0 * pow(w0,4);
+
+    // Continuous-time 4th-order Bessel-Thomson LPF
+    // laplace_nd() uses ascending powers for both numerator and denominator.
+    V(vout) <+ laplace_nd(V(vin), {n0}, {d0, d1, d2, d3, d4});
+
+    // Optional transient-start IC assist (disabled by default).
+    // Keep it in TRAN only, so AC linearization is not affected.
+    if ((enable_ic != 0) && analysis("tran"))
+      V(vout) <+ vout_ic * exp(-$abstime / ic_tau);
+  end
+endmodule
