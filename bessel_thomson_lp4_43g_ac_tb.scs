@@ -1,0 +1,27 @@
+// Spectre AC testbench example for bessel_thomson_lp4_43g
+simulator lang=spectre
+
+global 0
+
+// Load the Verilog-A model
+ahdl_include "./bessel_thomson_lp4_43g.va"
+
+// AC source: set acmag=1 so V(vout)/V(vin) is direct transfer magnitude
+V1 (vin 0) vsource type=dc dc=0 acmag=1
+
+// DUT instance (default f3db=43 GHz)
+XDUT (vin vout) bessel_thomson_lp4_43g \
+    f3db=43e9 gain_dc=1.0 enable_ic=0
+
+// High-Z load to define output node without materially loading the filter
+Rload (vout 0) resistor r=1e12
+
+// AC sweep: 1 MHz -> 1 THz, decade sweep
+ac ac dec 200 1e6 1e12
+
+// Save input/output for plotting in ADE/ViVA
+save V(vin) V(vout)
+
+// In ViVA/ADE calculator, plot:
+//   dB20(VF("/vout")/VF("/vin"))
+// Then inspect around 43e9 Hz; it should be close to -3.01 dB.
