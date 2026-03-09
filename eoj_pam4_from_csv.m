@@ -153,8 +153,8 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     event_value = nan(N_UI, 1);
 
     if ~isempty(all_evt.tcross_abs)
-        tie_sum = zeros(N_UI, 1);
-        tie_cnt = zeros(N_UI, 1);
+        % No per-UI averaging: if multiple events exist in the same UI,
+        % keep the latest event value seen in that UI.
         for k = 1:numel(all_evt.tcross_abs)
             n_ui = all_evt.ui_index_global(k);
             if n_ui < 1 || n_ui > N_UI
@@ -163,12 +163,9 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
             n0 = n_ui - 1;
             t_ideal = t0 + n0 * UI;
             tie_raw = all_evt.tcross_abs(k) - t_ideal;
-            tie_sum(n_ui) = tie_sum(n_ui) + tie_raw;
-            tie_cnt(n_ui) = tie_cnt(n_ui) + 1;
+            has_event(n_ui) = true;
+            event_value(n_ui) = tie_raw;
         end
-        idx_evt = find(tie_cnt > 0);
-        has_event(idx_evt) = true;
-        event_value(idx_evt) = tie_sum(idx_evt) ./ tie_cnt(idx_evt);
     end
 
     for n = 2:N_UI

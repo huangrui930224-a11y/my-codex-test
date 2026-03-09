@@ -113,7 +113,7 @@
 - 计算 raw TIE：`tie_raw = tcross_abs - (t0 + n*UI)`。
 - 每 UI 更新一阶 LPF：
   - `alpha = exp(-2*pi*fc/fb)`
-  - 有事件用事件值，无事件沿用上一 UI 值（保持带宽正确）
+  - 有事件用事件值（同一 UI 多事件不均值，取该 UI 最新事件），无事件沿用上一 UI 值（保持带宽正确）
 - 对 12 类目标 crossing 做 CRU 校正：
   - `tcross_cru_abs = tcross_abs - tie_LF_ui(n)`
 
