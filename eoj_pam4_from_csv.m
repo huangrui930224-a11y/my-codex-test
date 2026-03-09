@@ -126,9 +126,17 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
                 continue;
             end
 
-            k0 = (ui_global_begin - 1) * cfg.M + 1;
-            k1 = ui_global_end * cfg.M;
-            [tcross_all, kcross_all, n_cross] = find_all_crossings(t_uniform, v_uniform, k0, k1, th, trans_def(i).dir);
+            [a_sym, b_sym, ok_name] = parse_transition_name_pair(trans_def(i).name);
+            if ok_name
+                [tcross_all, kcross_all, n_cross] = find_crossings_by_symbol_pair( ...
+                    t_uniform, v_uniform, sym, cfg.M, ui_global_begin, ui_global_end, ...
+                    a_sym, b_sym, th, trans_def(i).dir);
+            else
+                % Fallback for non-digit transition names in manual trans_def
+                k0 = (ui_global_begin - 1) * cfg.M + 1;
+                k1 = ui_global_end * cfg.M;
+                [tcross_all, kcross_all, n_cross] = find_all_crossings(t_uniform, v_uniform, k0, k1, th, trans_def(i).dir);
+            end
 
             if n_cross > 1 && cfg.verbose
                 fprintf('[EOJ] transition %d (%s), repeat %d: multiple crossings (%d), using all.\n', ...
@@ -637,6 +645,58 @@ function th = get_threshold(thr_type, th01, th12, th23)
         otherwise
             error('Unknown thr_type: %s', thr_type);
     end
+end
+
+function [a, b, ok] = parse_transition_name_pair(name)
+    ok = false;
+    a = nan; b = nan;
+    if isstring(name)
+        name = char(name);
+    end
+    if ~ischar(name) || numel(name) < 2
+        return;
+    end
+    c1 = name(1);
+    c2 = name(2);
+    if c1 >= '0' && c1 <= '3' && c2 >= '0' && c2 <= '3'
+        a = double(c1) - double('0');
+        b = double(c2) - double('0');
+        ok = true;
+    end
+end
+
+function [tcross_all, kcross_all, n_cross] = find_crossings_by_symbol_pair(t, v, sym, M, ui_begin, ui_end, a, b, th, dir)
+    tcross_all = [];
+    kcross_all = [];
+    n_cross = 0;
+
+    % Check candidate UI boundaries n->n+1 where symbols match A->B first,
+    % then estimate crossing by threshold interpolation near that boundary.
+    n0 = max(1, ui_begin);
+    n1 = min(numel(sym)-1, ui_end-1);
+
+    for n = n0:n1
+        if sym(n) ~= a || sym(n+1) ~= b
+            continue;
+        end
+
+        k0 = max(1, (n - 1) * M + 1);
+        k1 = min(numel(v), (n + 1) * M);
+        [tc_tmp, kc_tmp, nn] = find_all_crossings(t, v, k0, k1, th, dir);
+        if nn == 0
+            continue;
+        end
+
+        % If ringing gives multiple crossings near one boundary, keep the
+        % one closest to the UI boundary location.
+        t_boundary = t(min(numel(t), n * M));
+        [~, ibest] = min(abs(tc_tmp - t_boundary));
+
+        tcross_all(end+1,1) = tc_tmp(ibest); %#ok<AGROW>
+        kcross_all(end+1,1) = kc_tmp(ibest); %#ok<AGROW>
+    end
+
+    n_cross = numel(tcross_all);
 end
 
 function [tcross_all, kcross_all, n_cross] = find_all_crossings(t, v, k0, k1, th, dir)

@@ -104,8 +104,9 @@
    - 在 `th01/th12/th23` 上找所有过阈值 crossing
    - 线性插值求 `tcross_abs`
 2. **12类目标 transition crossing 提取**（给 EOJ 用）：
-   - 每类按自己的 `thr_type + dir + window` 查找
-   - 一个窗口内多 crossing 时全部保留（同类同 repeat 可有多个事件）
+   - 先按符号跳变对筛选边界（如 `10`、`13`）
+   - 再在该边界附近按对应 `thr_type + dir` 做阈值 crossing 插值
+   - 同类同 repeat 的所有命中都保留用于均值
 
 ### Step 7) CRU（golden PLL）校正
 
