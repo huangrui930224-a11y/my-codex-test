@@ -14,6 +14,8 @@ cfg.ref_transition = [];           % auto-select if empty
 cfg.discard_first_repeats = 0;
 cfg.do_plot = true;
 cfg.verbose = true;
+cfg.export_csv = true;
+cfg.export_dir = '.';
 
 % Recommended: user-provided transition windows (stable and protocol-driven)
 % Example template only (replace begin_ui/end_ui with your known windows).
@@ -62,3 +64,6 @@ fprintf('inferred symbol head (first 32):\n'); disp(out.symbol_inferred(1:min(32
 fprintf('all crossing threshold times count: th01=%d, th12=%d, th23=%d\n', ...
     numel(out.all_crossing_threshold_times.th01), numel(out.all_crossing_threshold_times.th12), numel(out.all_crossing_threshold_times.th23));
 fprintf('th01 crossing time head (s):\n'); disp(out.all_crossing_threshold_times.th01(1:min(10,end)).');
+
+fprintf('csv exported files:\n');
+disp(out.csv_export_files);

@@ -259,6 +259,13 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         'th12', all_evt.tcross_abs(all_evt.th_id == 2), ...
         'th23', all_evt.tcross_abs(all_evt.th_id == 3));
 
+    % Optional CSV exports for symbol trace / AAAABB markers / crossings
+    if cfg.export_csv
+        out.csv_export_files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI);
+    else
+        out.csv_export_files = struct();
+    end
+
     % Step 11: plots
     if cfg.do_plot
         make_plots(y, [V0 V1 V2 V3], [th01 th12 th23], out, trans, rep0, rep1);
@@ -287,6 +294,8 @@ function cfg = apply_defaults(cfg)
     end
     if ~isfield(cfg, 'do_plot') || isempty(cfg.do_plot), cfg.do_plot = true; end
     if ~isfield(cfg, 'verbose') || isempty(cfg.verbose), cfg.verbose = true; end
+    if ~isfield(cfg, 'export_csv') || isempty(cfg.export_csv), cfg.export_csv = false; end
+    if ~isfield(cfg, 'export_dir') || isempty(cfg.export_dir), cfg.export_dir = '.'; end
 end
 
 function [t, v] = read_csv_two_cols(csv_file)
@@ -679,6 +688,91 @@ function v = mean_or_nan(x)
     else
         v = mean(x);
     end
+end
+
+
+function files = export_eoj_csv_outputs(out, cfg, csv_file, N_UI)
+    if ~exist(cfg.export_dir, 'dir')
+        mkdir(cfg.export_dir);
+    end
+
+    [~, stem, ~] = fileparts(csv_file);
+    if isempty(stem)
+        stem = 'eoj_output';
+    end
+
+    % 1) Symbol trace CSV: inferred symbols + sampling phase/voltage + AAAABB marker
+    ui_global = (1:N_UI).';
+    repeat_id = floor((ui_global - 1) / cfg.Npat);
+    ui_in_repeat = mod(ui_global - 1, cfg.Npat) + 1;
+
+    mark = false(N_UI,1);
+    label = repmat({''}, N_UI, 1);
+    for i = 1:numel(out.trans_def)
+        b = out.trans_def(i).begin_ui;
+        e = out.trans_def(i).end_ui;
+        mask = (ui_in_repeat >= b) & (ui_in_repeat <= e);
+        mark(mask) = true;
+        for k = find(mask).'
+            if isempty(label{k})
+                label{k} = out.trans_def(i).name;
+            else
+                label{k} = [label{k}, '|', out.trans_def(i).name]; %#ok<AGROW>
+            end
+        end
+    end
+
+    T_sym = table(ui_global, repeat_id, ui_in_repeat, out.symbol_inferred(:), ...
+        repmat(out.symbol_sample.phase_index, N_UI, 1), ...
+        repmat(out.symbol_sample.phase_time_offset_s, N_UI, 1), ...
+        out.symbol_sample.voltage(:), mark, string(label), ...
+        'VariableNames', {'ui_global','repeat_id','ui_in_repeat','symbol', ...
+        'sample_phase_index','sample_phase_offset_s','sample_voltage_V', ...
+        'is_aaaabb_transition_pos','aaaabb_transition_name'});
+
+    sym_csv = fullfile(cfg.export_dir, [stem, '_symbol_trace.csv']);
+    writetable(T_sym, sym_csv);
+
+    % 2) AAAABB transition definition CSV
+    N = numel(out.trans_def);
+    idx_i = (1:N).';
+    name = strings(N,1);
+    begin_ui = zeros(N,1);
+    end_ui = zeros(N,1);
+    thr = strings(N,1);
+    dir = strings(N,1);
+    for i = 1:N
+        name(i) = string(out.trans_def(i).name);
+        begin_ui(i) = out.trans_def(i).begin_ui;
+        end_ui(i) = out.trans_def(i).end_ui;
+        thr(i) = string(out.trans_def(i).thr_type);
+        dir(i) = string(out.trans_def(i).dir);
+    end
+    T_def = table(idx_i, name, begin_ui, end_ui, thr, dir, ...
+        'VariableNames', {'transition_index','name','begin_ui','end_ui','thr_type','dir'});
+    def_csv = fullfile(cfg.export_dir, [stem, '_aaaabb_transitions.csv']);
+    writetable(T_def, def_csv);
+
+    % 3) All crossing threshold times CSV
+    th_name = strings(numel(out.all_crossings.th_id),1);
+    for k = 1:numel(th_name)
+        if out.all_crossings.th_id(k) == 1
+            th_name(k) = "th01";
+        elseif out.all_crossings.th_id(k) == 2
+            th_name(k) = "th12";
+        else
+            th_name(k) = "th23";
+        end
+    end
+    T_cross = table(out.all_crossings.tcross_abs(:), out.all_crossings.ui_index_global(:), ...
+        out.all_crossings.th_id(:), th_name, out.all_crossings.th_value(:), ...
+        'VariableNames', {'tcross_abs_s','ui_index_global','threshold_id','threshold_name','threshold_value_V'});
+    cross_csv = fullfile(cfg.export_dir, [stem, '_all_crossings.csv']);
+    writetable(T_cross, cross_csv);
+
+    files = struct('symbol_trace_csv', sym_csv, ...
+        'aaaabb_transition_csv', def_csv, ...
+        'crossing_csv', cross_csv);
 end
 
 function make_plots(y, V, ths, out, trans, rep0, rep1)
