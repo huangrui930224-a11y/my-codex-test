@@ -128,16 +128,16 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
 
             k0 = (ui_global_begin - 1) * cfg.M + 1;
             k1 = ui_global_end * cfg.M;
-            [tcross, kcross, n_cross] = find_first_crossing(t_uniform, v_uniform, k0, k1, th, trans_def(i).dir);
+            [tcross_all, kcross_all, n_cross] = find_all_crossings(t_uniform, v_uniform, k0, k1, th, trans_def(i).dir);
 
             if n_cross > 1 && cfg.verbose
-                fprintf('[EOJ] transition %d (%s), repeat %d: multiple crossings (%d), using first.\n', ...
+                fprintf('[EOJ] transition %d (%s), repeat %d: multiple crossings (%d), using all.\n', ...
                     i, trans_def(i).name, r, n_cross);
             end
 
-            if ~isnan(tcross)
-                ui_cross = floor((kcross - 1) / cfg.M) + 1; % 1-based UI index
-                trans(i).tcross_abs(end+1,1) = tcross; %#ok<AGROW>
+            for kk = 1:n_cross
+                ui_cross = floor((kcross_all(kk) - 1) / cfg.M) + 1; % 1-based UI index
+                trans(i).tcross_abs(end+1,1) = tcross_all(kk); %#ok<AGROW>
                 trans(i).ui_index_global(end+1,1) = ui_cross;
                 trans(i).repeat_id(end+1,1) = r;
             end
@@ -637,6 +637,49 @@ function th = get_threshold(thr_type, th01, th12, th23)
         otherwise
             error('Unknown thr_type: %s', thr_type);
     end
+end
+
+function [tcross_all, kcross_all, n_cross] = find_all_crossings(t, v, k0, k1, th, dir)
+    tcross_all = [];
+    kcross_all = [];
+    n_cross = 0;
+    if k1 <= k0 || k1 > numel(v)
+        return;
+    end
+    vv0 = v(k0:k1-1);
+    vv1 = v(k0+1:k1);
+
+    switch lower(dir)
+        case 'rise'
+            idx = find((vv0 < th) & (vv1 >= th));
+        case 'fall'
+            idx = find((vv0 > th) & (vv1 <= th));
+        otherwise
+            error('Unknown direction: %s', dir);
+    end
+
+    n_cross = numel(idx);
+    if isempty(idx)
+        return;
+    end
+
+    tcross_all = nan(n_cross, 1);
+    kcross_all = nan(n_cross, 1);
+    out_n = 0;
+    for ii = 1:n_cross
+        k = k0 + idx(ii) - 1;
+        dv = v(k+1) - v(k);
+        if dv == 0
+            continue;
+        end
+        out_n = out_n + 1;
+        tcross_all(out_n,1) = t(k) + (th - v(k)) * (t(k+1) - t(k)) / dv;
+        kcross_all(out_n,1) = k;
+    end
+
+    tcross_all = tcross_all(1:out_n);
+    kcross_all = kcross_all(1:out_n);
+    n_cross = out_n;
 end
 
 function [tcross, kcross, n_cross] = find_first_crossing(t, v, k0, k1, th, dir)

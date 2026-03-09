@@ -105,7 +105,7 @@
    - 线性插值求 `tcross_abs`
 2. **12类目标 transition crossing 提取**（给 EOJ 用）：
    - 每类按自己的 `thr_type + dir + window` 查找
-   - 一个窗口内多 crossing 时取第一个
+   - 一个窗口内多 crossing 时全部保留（同类同 repeat 可有多个事件）
 
 ### Step 7) CRU（golden PLL）校正
 
