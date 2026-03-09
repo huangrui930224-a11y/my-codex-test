@@ -65,11 +65,7 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     th12 = (V1 + V2) / 2;
     th23 = (V2 + V3) / 2;
 
-    % Step 5: time-axis origin anchor uses the first threshold crossing
-    % instead of the first sample time (requested behavior).
-    t0 = find_first_threshold_crossing_time(t_uniform, v_uniform, th01, th12, th23);
-
-    % Build or infer transition definitions (12 classes)
+    % Step 5: Build or infer transition definitions (12 classes)
     if isfield(cfg, 'trans_def') && ~isempty(cfg.trans_def)
         trans_def = cfg.trans_def;
         infer_info = struct('used', false, 'offset_ui', 0, 'coverage', nan, 'hit_count', nan, 'half_window_ui', cfg.auto_window_half_width_ui);
@@ -94,7 +90,15 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
     use_repeat_start = cfg.discard_first_repeats;
     ui_start_for_use = use_repeat_start * cfg.Npat + 1;
 
-    all_evt = collect_all_crossing_events(t_uniform, v_uniform, cfg.M, th01, th12, th23, ui_start_for_use);
+    all_evt = collect_all_crossing_events_from_symbols(t_uniform, v_uniform, sym, cfg.M, th01, th12, th23, ui_start_for_use);
+
+    % Time-axis origin anchor now also comes from symbol-driven crossings:
+    % use earliest detected crossing; fallback to first sample if none.
+    if ~isempty(all_evt.tcross_abs)
+        t0 = min(all_evt.tcross_abs);
+    else
+        t0 = t_uniform(1);
+    end
 
     % Step 6 (target transitions): crossing extraction per class/repeat
     trans = repmat(struct('tcross_abs', [], 'ui_index_global', [], 'repeat_id', [], ...
@@ -599,35 +603,42 @@ function t0 = find_first_threshold_crossing_time(t, v, th01, th12, th23)
     end
 end
 
-function all_evt = collect_all_crossing_events(t, v, M, th01, th12, th23, ui_start)
-    thresholds = [th01, th12, th23];
+function all_evt = collect_all_crossing_events_from_symbols(t, v, sym, M, th01, th12, th23, ui_start)
     tc = [];
     ui = [];
     th_id = [];
     th_val = [];
 
-    for k = 1:(numel(v)-1)
-        ui_k = floor((k - 1) / M) + 1;
-        if ui_k < ui_start
+    % For every UI boundary n->n+1, detect symbol jump first; only then pick
+    % threshold by jump type and compute crossing near that boundary.
+    n0 = max(1, ui_start);
+    n1 = min(numel(sym)-1, floor(numel(v)/M)-1);
+
+    for n = n0:n1
+        a = sym(n);
+        b = sym(n+1);
+        if a == b
             continue;
         end
-        v0 = v(k);
-        v1 = v(k+1);
-        dv = v1 - v0;
-        if dv == 0
+
+        thr_type = choose_thr_type_by_levels(a, b);
+        th = get_threshold(thr_type, th01, th12, th23);
+        dir = ternary(b > a, 'rise', 'fall');
+
+        k0 = max(1, (n - 1) * M + 1);
+        k1 = min(numel(v), (n + 1) * M);
+        [tc_tmp, kc_tmp, nn] = find_all_crossings(t, v, k0, k1, th, dir);
+        if nn == 0
             continue;
         end
-        for ith = 1:3
-            th = thresholds(ith);
-            is_cross = (v0 < th && v1 >= th) || (v0 > th && v1 <= th);
-            if is_cross
-                tcross = t(k) + (th - v0) * (t(k+1) - t(k)) / dv;
-                tc(end+1,1) = tcross; %#ok<AGROW>
-                ui(end+1,1) = ui_k; %#ok<AGROW>
-                th_id(end+1,1) = ith; %#ok<AGROW>
-                th_val(end+1,1) = th; %#ok<AGROW>
-            end
-        end
+
+        t_boundary = t(min(numel(t), n * M));
+        [~, ibest] = min(abs(tc_tmp - t_boundary));
+
+        tc(end+1,1) = tc_tmp(ibest); %#ok<AGROW>
+        ui(end+1,1) = floor((kc_tmp(ibest) - 1) / M) + 1; %#ok<AGROW>
+        th_id(end+1,1) = threshold_id_from_type(thr_type); %#ok<AGROW>
+        th_val(end+1,1) = th; %#ok<AGROW>
     end
 
     all_evt = struct('tcross_abs', tc, 'ui_index_global', ui, ...
@@ -697,6 +708,19 @@ function [tcross_all, kcross_all, n_cross] = find_crossings_by_symbol_pair(t, v,
     end
 
     n_cross = numel(tcross_all);
+end
+
+function id = threshold_id_from_type(thr_type)
+    switch lower(thr_type)
+        case 'th01'
+            id = 1;
+        case 'th12'
+            id = 2;
+        case 'th23'
+            id = 3;
+        otherwise
+            error('Unknown thr_type: %s', thr_type);
+    end
 end
 
 function [tcross_all, kcross_all, n_cross] = find_all_crossings(t, v, k0, k1, th, dir)

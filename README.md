@@ -100,9 +100,9 @@
 分两部分：
 
 1. **全 crossing 提取**（给 CRU 用）：
-   - `collect_all_crossing_events`
-   - 在 `th01/th12/th23` 上找所有过阈值 crossing
-   - 线性插值求 `tcross_abs`
+   - `collect_all_crossing_events_from_symbols`
+   - 先按符号跳变边界筛选（仅 `A->B, A!=B`）
+   - 再按该跳变对应阈值 (`th01/th12/th23`) 与方向做 crossing 插值
 2. **12类目标 transition crossing 提取**（给 EOJ 用）：
    - 先按符号跳变对筛选边界（如 `10`、`13`）
    - 再在该边界附近按对应 `thr_type + dir` 做阈值 crossing 插值
