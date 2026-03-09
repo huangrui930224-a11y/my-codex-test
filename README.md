@@ -204,6 +204,10 @@
 
 ### 5) 自动 AAAABB 有 missing 如何优化
 
-可增大 `cfg.auto_window_half_width_ui`（默认 1），自动推断时会把每类的 `begin_ui/end_ui` 从单点扩展为 `pos(1)±half_window`，提高 crossing 命中概率。
+可增大 `cfg.auto_window_half_width_ui`（默认 1），自动推断时会扩展内部 crossing 搜索窗 `search_begin_ui/search_end_ui = pos(1)±half_window` 以提高命中。
+
+`*_aaaabb_transitions.csv` 中导出的 `begin_ui/end_ui` 定义为 AAAABB 实际跨度：
+- `begin_ui`：第一个 A 出现位置（`p0-3`）
+- `end_ui`：第二个 B 结束位置（`p0+2`）
 
 并结合 `*_detected_transition_crossings.csv` 检查每类在 `repeat_pair_used` 中是否都检测到事件。

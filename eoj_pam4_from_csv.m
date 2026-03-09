@@ -109,8 +109,13 @@ function out = eoj_pam4_from_csv(csv_file, cfg)
         th = get_threshold(trans_def(i).thr_type, th01, th12, th23);
 
         for r = use_repeat_start:max_repeat
-            begin_ui = trans_def(i).begin_ui;
-            end_ui = trans_def(i).end_ui;
+            if isfield(trans_def, 'search_begin_ui') && isfield(trans_def, 'search_end_ui')
+                begin_ui = trans_def(i).search_begin_ui;
+                end_ui = trans_def(i).search_end_ui;
+            else
+                begin_ui = trans_def(i).begin_ui;
+                end_ui = trans_def(i).end_ui;
+            end
             if begin_ui < 1 || end_ui > cfg.Npat || end_ui < begin_ui
                 error('Invalid begin_ui/end_ui in trans_def(%d).', i);
             end
@@ -496,6 +501,7 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat, hal
 % Build all 12 directed classes explicitly, each class picks one
     % representative window (first AAAABB hit in repeat0).
     trans_def = repmat(struct('name', '', 'begin_ui', 1, 'end_ui', 1, ...
+        'search_begin_ui', 1, 'search_end_ui', 1, ...
         'thr_type', 'th12', 'dir', 'rise'), 1, 12);
 
     idx = 0;
@@ -518,10 +524,14 @@ function [trans_def, infer_info] = infer_transitions_from_symbols(sym, Npat, hal
                 % still fail and return NaN, but class remains defined.
                 trans_def(idx).begin_ui = 1;
                 trans_def(idx).end_ui = Npat;
+                trans_def(idx).search_begin_ui = 1;
+                trans_def(idx).search_end_ui = Npat;
             else
-                p0 = pos(1);
-                trans_def(idx).begin_ui = max(1, p0 - half_w);
-                trans_def(idx).end_ui = min(Npat, p0 + half_w);
+                p0 = pos(1); % boundary between 4th A and 1st B
+                trans_def(idx).begin_ui = max(1, p0 - 3);
+                trans_def(idx).end_ui = min(Npat, p0 + 2);
+                trans_def(idx).search_begin_ui = max(1, p0 - half_w);
+                trans_def(idx).search_end_ui = min(Npat, p0 + half_w);
             end
         end
     end
