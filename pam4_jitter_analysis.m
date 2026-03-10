@@ -218,10 +218,13 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
 
         th = choose_threshold(A, B, th01, th12, th23);
 
-        % crossing 常发生在 UI 边界附近，使用跨边界窗口搜索
+        % crossing 搜索窗口：前一UI右半边 + 当前UI左半边
+        % 以减小远离边界区域的干扰（振铃/过冲导致的伪 crossing）。
         t_boundary = Tui(ui_idx, 1);
-        vwin = [y(ui_idx - 1, :), y(ui_idx, :)];
-        twin = [Tui(ui_idx - 1, :), Tui(ui_idx, :)];
+        left_idx = 1:floor(M/2);                 % 当前UI左半边
+        right_idx = (floor(M/2)+1):M;            % 前一UI右半边
+        vwin = [y(ui_idx - 1, right_idx), y(ui_idx, left_idx)];
+        twin = [Tui(ui_idx - 1, right_idx), Tui(ui_idx, left_idx)];
 
         [tc, ok] = find_crossing_near_boundary(twin, vwin, th, A, B, t_boundary);
         if ok

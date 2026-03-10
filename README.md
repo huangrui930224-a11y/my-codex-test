@@ -116,7 +116,7 @@
 ### Step 9 提取所有 crossing time
 
 - 对每个 `A != B` 的 UI 边界提取 crossing（不提前按 AAAABB 过滤）。
-- 在“前一 UI + 当前 UI”拼接窗口中搜索 crossing。
+- 在“前一 UI 右半边 + 当前 UI 左半边”拼接窗口中搜索 crossing。
 - 通过线性插值计算 crossing time。
 - 多候选时，选离边界最近的 crossing。
 
