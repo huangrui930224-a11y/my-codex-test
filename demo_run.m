@@ -9,9 +9,10 @@ clear; clc;
 csv_file = 'example_waveform.csv';  % 替换为真实 CSV 文件路径
 fb = 112e9;                         % 112G PAM4 可用 56e9 或按你的定义填写
 M = 64;                             % 每 UI 重采样点数
+use_cru = true;                     % CRU 开关：true=启用，false=关闭
 
 % ===== 执行分析 =====
-result = pam4_jitter_analysis(csv_file, fb, M);
+result = pam4_jitter_analysis(csv_file, fb, M, use_cru);
 
 % ===== 结果打印 =====
 fprintf('\n[Demo] JRMS = %.6e s, %.3f ps, %.6e UI\n', ...
@@ -40,3 +41,5 @@ fprintf('[Demo] 重采样起点 t_start_resample = %.6e s\n', result.resampled.t
 fprintf('[Demo] 采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', ...
     result.sampling_phase.m_center, result.sampling_phase.m_selected, ...
     result.sampling_phase.m_opt, result.sampling_phase.phase_score);
+
+fprintf('[Demo] CRU 开关 use_cru = %d\n', result.use_cru);

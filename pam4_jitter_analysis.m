@@ -1,10 +1,11 @@
-function result = pam4_jitter_analysis(csv_file, fb, M)
+function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
 % PAM4 抖动后处理主函数（224G/112G TX 前仿真）
 % ------------------------------------------------------------
 % 输入:
 %   csv_file : CSV 路径，包含两列 [time(s), vdiff(V)]
 %   fb       : 符号率/波特率 (Hz)
 %   M        : 每 UI 重采样点数，默认 64
+%   use_cru  : 是否启用 Golden PLL CRU，默认 true
 %
 % 输出:
 %   result   : 结构体，包含 JRMS/J3u/每类样本数/每类均值 等结果
@@ -15,6 +16,9 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
 
     if nargin < 3 || isempty(M)
         M = 64;
+    end
+    if nargin < 4 || isempty(use_cru)
+        use_cru = true;
     end
 
     %% ==============================
@@ -241,7 +245,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     end
 
     %% ==============================
-    % Step 10 Golden PLL CRU
+    % Step 10 Golden PLL CRU（可开关）
     % ===============================
     fc = fb / 13280;
     alpha = exp(-2 * pi * fc / fb);
@@ -255,17 +259,23 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     tie_LF = zeros(N_UI, 1);
     tie_HF = nan(N_UI, 1);
 
-    for n = 2:N_UI
-        if has_cross(n)
-            e = tie_raw(n);
-        else
-            e = tie_LF(n - 1);
+    if use_cru
+        % 启用 CRU：按 Golden PLL 每 UI 更新
+        for n = 2:N_UI
+            if has_cross(n)
+                e = tie_raw(n);
+            else
+                e = tie_LF(n - 1);
+            end
+            tie_LF(n) = alpha * tie_LF(n - 1) + (1 - alpha) * e;
         end
-        tie_LF(n) = alpha * tie_LF(n - 1) + (1 - alpha) * e;
+        valid_raw = has_cross;
+        tie_HF(valid_raw) = tie_raw(valid_raw) - tie_LF(valid_raw);
+    else
+        % 关闭 CRU：后续流程仍使用 tie_HF 容器，但等价于直通 tie_raw
+        tie_LF(:) = 0;
+        tie_HF(has_cross) = tie_raw(has_cross);
     end
-
-    valid_raw = has_cross;
-    tie_HF(valid_raw) = tie_raw(valid_raw) - tie_LF(valid_raw);
 
     %% ==============================
     % Step 11 每类 transition 预处理
@@ -357,6 +367,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
     result.UI = UI;
     result.fc = fc;
     result.alpha = alpha;
+    result.use_cru = logical(use_cru);
     result.sampling_phase = struct('m_center', m_center, 'm_selected', m, ...
                                    'm_opt', m_opt, 'phase_score', phase_score);
     result.level_centers = cent_sorted;
@@ -386,6 +397,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M)
         numel(v_uniform), numel(v_trim), Ts, M);
     fprintf('重采样起点 t_start_resample = %.6e s\n', t_start_resample);
     fprintf('采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', m_center, m, m_opt, phase_score);
+    fprintf('CRU 开关: use_cru = %d\n', logical(use_cru));
     fprintf('---------------------------------------------------\n');
     fprintf('每类 transition 最终样本数 (已强制一致 Nmin=%d):\n', Nmin);
     for cls = 1:12

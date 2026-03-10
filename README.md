@@ -25,11 +25,12 @@
 
 ## 输入参数说明
 
-`pam4_jitter_analysis(csv_file, fb, M)`
+`pam4_jitter_analysis(csv_file, fb, M, use_cru)`
 
 - `csv_file`：输入波形 CSV 路径
 - `fb`：波特率（Hz）
 - `M`：每 UI 重采样点数（samples/UI），通常 `M=64`
+- `use_cru`：是否启用 Golden PLL CRU（`true/false`，默认 `true`）
 
 ---
 
@@ -127,7 +128,8 @@
   - `alpha = exp(-2*pi*fc/fb)`
 - 构建理想时钟 `t_ideal`。
 - 计算 `tie_raw = tcross_abs - t_ideal`。
-- PLL 每 UI 更新得到 `tie_LF`，再得 `tie_HF = tie_raw - tie_LF`。
+- 若 `use_cru=true`：PLL 每 UI 更新得到 `tie_LF`，并计算 `tie_HF = tie_raw - tie_LF`。
+- 若 `use_cru=false`：跳过 PLL，令 `tie_HF = tie_raw`，后续步骤保持不变。
 
 ### Step 11 每类 transition 预处理
 
