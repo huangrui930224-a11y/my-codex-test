@@ -5,10 +5,10 @@ function noiseOut = qprbs13_level_noise_module(Y, symCode, cfg)
 % For each level (0..3):
 %   1) Find runs of consecutive identical symbols with length >= minRunLen.
 %   2) At fixed UI phase sample index m0, take one voltage sample per UI in each run.
-%   3) Compute RMS (std) relative to mean:
-%      - 'merge'   : merge all eligible run samples of this level, then std once
-%      - 'weighted': std per run, then weighted average by run length
-%      - 'mean'    : std per run, then arithmetic mean
+%   3) Compute RMS deviation relative to mean:
+%      - 'merge'   : merge all eligible run samples of this level, then RMS-deviation once
+%      - 'weighted': RMS-deviation per run, then weighted average by run length
+%      - 'mean'    : RMS-deviation per run, then arithmetic mean
 % Then sigma_n = mean([sigma_L0..sigma_L3]).
 %
 % Inputs
@@ -87,7 +87,8 @@ function noiseOut = qprbs13_level_noise_module(Y, symCode, cfg)
             if runLens(r) < 2
                 runSigmas(r) = 0;
             else
-                runSigmas(r) = std(vals, 0);
+                % RMS deviation as in sigma = sqrt(1/N * sum((Vi - Vmean)^2))
+                runSigmas(r) = std(vals, 1);
             end
             merged = [merged; vals]; %#ok<AGROW>
         end
@@ -97,7 +98,7 @@ function noiseOut = qprbs13_level_noise_module(Y, symCode, cfg)
                 if numel(merged) < 2
                     sigmaLevels(lev+1) = 0;
                 else
-                    sigmaLevels(lev+1) = std(merged, 0);
+                    sigmaLevels(lev+1) = std(merged, 1);
                 end
             case 'weighted'
                 sigmaLevels(lev+1) = sum(runSigmas .* runLens) / sum(runLens);
