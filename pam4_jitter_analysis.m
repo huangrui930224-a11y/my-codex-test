@@ -71,23 +71,24 @@ function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
     %% ==============================
     % Step 1.5 估计首个 crossing time（用于设定重采样起点）
     % ===============================
-    % 说明：用户要求“重采样起点从第一个 crossing time 开始”。
-    % 此处先在原始波形上用中值阈值估计首个穿越点，作为统一重采样起点。
+    % 说明：重采样起点改为“实际第一个过阈值采样点”（不做时间插值）。
+    % 阈值采用 mean(v_raw) 作为起始检测阈值。
     th_start = mean(v_raw);
     t_start_resample = t_raw(1);
-    idx0 = find((v_raw(1:end-1)-th_start).*(v_raw(2:end)-th_start) <= 0, 1, 'first');
-    if ~isempty(idx0)
-        dv0 = v_raw(idx0+1) - v_raw(idx0);
-        if abs(dv0) < eps
-            t_start_resample = t_raw(idx0);
-        else
-            t_start_resample = t_raw(idx0) + (th_start - v_raw(idx0)) * ...
-                (t_raw(idx0+1) - t_raw(idx0)) / dv0;
-        end
-        % 避免数值误差导致起点超界
-        t_start_resample = max(t_raw(1), min(t_start_resample, t_raw(end)));
+
+    % 找到第一个过阈值的“实际采样点”索引（上一点在阈值一侧，当前点到另一侧）
+    idx_up = find(v_raw(1:end-1) < th_start & v_raw(2:end) >= th_start, 1, 'first');
+    idx_dn = find(v_raw(1:end-1) > th_start & v_raw(2:end) <= th_start, 1, 'first');
+
+    idx_candidates = [idx_up, idx_dn];
+    idx_candidates = idx_candidates(~isnan(idx_candidates) & idx_candidates > 0);
+
+    if ~isempty(idx_candidates)
+        idx0 = min(idx_candidates);
+        % 使用实际过阈值样本点时间（k+1 点），不做线性插值
+        t_start_resample = t_raw(idx0 + 1);
     else
-        warning('未检测到首个 crossing，重采样起点回退到 t_raw(1)。');
+        warning('未检测到首个过阈值点，重采样起点回退到 t_raw(1)。');
     end
 
     %% ==============================
