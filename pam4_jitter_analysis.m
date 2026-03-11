@@ -69,26 +69,62 @@ function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
     end
 
     %% ==============================
-    % Step 1.5 估计首个 crossing time（用于设定重采样起点）
+    % Step 1.5 估计重采样起点（首个 AB 跳变对应阈值的过阈值点）
     % ===============================
-    % 说明：重采样起点改为“实际第一个过阈值采样点”（不做时间插值）。
-    % 阈值采用 mean(v_raw) 作为起始检测阈值。
-    th_start = mean(v_raw);
+    % 说明：重采样起点定义为“存在 A->B 跳变的第一个过阈值采样点”，
+    % 且阈值必须使用该 A->B 跳变对应阈值（th01/th12/th23）。
+
+    % 在原始波形上先做 4 电平聚类，得到粗符号序列
+    [idx_raw, centers_raw] = kmeans_1d_no_toolbox(v_raw, 4, 80);
+    [craw_sorted, ord_raw] = sort(centers_raw(:), 'ascend');
+    map_raw = zeros(4, 1);
+    for ii = 1:4
+        map_raw(ord_raw(ii)) = ii - 1;
+    end
+    symbol_raw = zeros(size(idx_raw));
+    for ii = 1:numel(idx_raw)
+        symbol_raw(ii) = map_raw(idx_raw(ii));
+    end
+
+    % 由原始聚类样本估计阈值
+    Vraw = zeros(4, 1);
+    for lv = 0:3
+        vals = v_raw(symbol_raw == lv);
+        if isempty(vals)
+            Vraw(lv + 1) = craw_sorted(lv + 1);
+        else
+            Vraw(lv + 1) = mean(vals);
+        end
+    end
+    th01_raw = (Vraw(1) + Vraw(2)) / 2;
+    th12_raw = (Vraw(2) + Vraw(3)) / 2;
+    th23_raw = (Vraw(3) + Vraw(4)) / 2;
+
     t_start_resample = t_raw(1);
+    found_start = false;
 
-    % 找到第一个过阈值的“实际采样点”索引（上一点在阈值一侧，当前点到另一侧）
-    idx_up = find(v_raw(1:end-1) < th_start & v_raw(2:end) >= th_start, 1, 'first');
-    idx_dn = find(v_raw(1:end-1) > th_start & v_raw(2:end) <= th_start, 1, 'first');
+    % 扫描第一个 A->B 跳变（相邻样本符号变化）
+    for k = 2:numel(symbol_raw)
+        A0 = symbol_raw(k - 1);
+        B0 = symbol_raw(k);
+        if A0 == B0
+            continue;
+        end
 
-    idx_candidates = [idx_up, idx_dn];
-    idx_candidates = idx_candidates(~isnan(idx_candidates) & idx_candidates > 0);
+        th_ab = choose_threshold(A0, B0, th01_raw, th12_raw, th23_raw);
 
-    if ~isempty(idx_candidates)
-        idx0 = min(idx_candidates);
-        % 使用实际过阈值样本点时间（k+1 点），不做线性插值
-        t_start_resample = t_raw(idx0 + 1);
-    else
-        warning('未检测到首个过阈值点，重采样起点回退到 t_raw(1)。');
+        % 使用该 AB 对应阈值判断当前样本对是否过阈值
+        if (A0 < B0 && v_raw(k - 1) < th_ab && v_raw(k) >= th_ab) || ...
+           (A0 > B0 && v_raw(k - 1) > th_ab && v_raw(k) <= th_ab) || ...
+           ((v_raw(k - 1) - th_ab) * (v_raw(k) - th_ab) <= 0)
+            t_start_resample = t_raw(k);  % 实际过阈值采样点
+            found_start = true;
+            break;
+        end
+    end
+
+    if ~found_start
+        warning('未检测到 AB 跳变对应阈值过阈值点，重采样起点回退到 t_raw(1)。');
     end
 
     %% ==============================
