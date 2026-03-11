@@ -161,6 +161,17 @@ function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
         symbol(ii) = map_old2new(cluster_idx(ii));
     end
 
+    % 新增输出：每个 UI 对应的采样相位、电压、符号，导出为 CSV
+    ui_index = (1:N_UI).';
+    sample_time = Tui(:, m);
+    phase_index = repmat(m, N_UI, 1);
+    sample_voltage = y_center;
+    sample_symbol = symbol;
+    ui_sampling_table = [ui_index, sample_time, phase_index, sample_voltage, sample_symbol];
+    ui_sampling_csv = 'ui_sampling_per_ui.csv';
+    ui_sampling_header = {'ui_index','sample_time_s','phase_index','sample_voltage_V','symbol'};
+    writecell([ui_sampling_header; num2cell(ui_sampling_table)], ui_sampling_csv);
+
     %% ==============================
     % Step 6 识别 AAAABB transition（先记录候选UI索引，统计放在CRU之后）
     % ===============================
@@ -373,6 +384,8 @@ function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
     result.level_centers = cent_sorted;
     result.symbol_means = struct('V0', V(1), 'V1', V(2), 'V2', V(3), 'V3', V(4));
     result.thresholds = struct('th01', th01, 'th12', th12, 'th23', th23);
+    result.ui_sampling_csv = ui_sampling_csv;
+    result.ui_sampling_columns = ui_sampling_header;
     % 新增输出：重采样数据（time, vdiff）
     result.resampled = struct('time_s', t_uniform, 'vdiff_V', v_uniform, ...
                               'time_trim_s', t_trim, 'vdiff_trim_V', v_trim, ...
@@ -398,6 +411,7 @@ function result = pam4_jitter_analysis(csv_file, fb, M, use_cru)
     fprintf('重采样起点 t_start_resample = %.6e s\n', t_start_resample);
     fprintf('采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', m_center, m, m_opt, phase_score);
     fprintf('CRU 开关: use_cru = %d\n', logical(use_cru));
+    fprintf('每UI采样导出: %s (列: ui_index,time_s,phase,voltage,symbol)\n', ui_sampling_csv);
     fprintf('---------------------------------------------------\n');
     fprintf('每类 transition 最终样本数 (已强制一致 Nmin=%d):\n', Nmin);
     for cls = 1:12

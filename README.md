@@ -47,6 +47,7 @@
 - `thresholds`（th01/th12/th23）
 - `resampled`（重采样数据、Ts、M、重采样起点）
 - `crossing_not_found`
+- `ui_sampling_csv`（每个 UI 的采样相位/电压/符号 CSV）
 
 ---
 
@@ -193,5 +194,6 @@
 
 - 打印符号均值、阈值
 - 导出重采样数据 `resampled_waveform.csv`
+- 导出每UI采样信息 `ui_sampling_per_ui.csv`（UI索引/采样相位/电压/符号）
 - 打印重采样起点 `t_start_resample`
 

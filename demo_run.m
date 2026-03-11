@@ -43,3 +43,5 @@ fprintf('[Demo] 采样相位: center=%d, selected=%d, opt=%d, score=%.6e\n', ...
     result.sampling_phase.m_opt, result.sampling_phase.phase_score);
 
 fprintf('[Demo] CRU 开关 use_cru = %d\n', result.use_cru);
+
+fprintf('[Demo] 每UI采样信息已导出: %s\n', result.ui_sampling_csv);
